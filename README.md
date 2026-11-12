@@ -1,0 +1,34 @@
+# Steam Racers
+
+Steam-powered combat racing in the Southern Wastelands. Three.js (WebGPU + WebGL2 fallback), TypeScript, Vite, PWA. PC and mobile.
+
+## Documents
+
+| Doc | Content |
+|---|---|
+| [00 — World & Lore](docs/00-world-lore.md) | Setting and its design implications |
+| [01 — Engine & Visual Direction](docs/01-engine-visual-direction.md) | Reference analysis, visual pillars, stack, decisions D1–D6 |
+| [02 — Shader & Style Spec](docs/02-shader-style-spec.md) | Ink-comic rendering pipeline, parameters, palette |
+| [03 — Engine Architecture](docs/03-engine-architecture.md) | Code structure, loop, systems, tooling, milestones |
+| [gameplay.md](docs/gameplay.md) | Gameplay reference (Italian) |
+| [Testing checklist](docs/testing-checklist.md) | Manual tests per milestone, PC + phone |
+
+## Commands
+
+```bash
+npm install
+npm run dev          # dev server (also on LAN for phone testing)
+npm run build        # typecheck + production build + PWA service worker
+npm run preview      # serve the production build
+npm run test         # unit tests (Vitest)
+npm run test:e2e     # Playwright: desktop + emulated mobile (first time: npx playwright install chromium)
+npm run test:all     # typecheck + unit + e2e
+```
+
+## URL flags
+
+`?debug` tuning panel · `?tier=low|medium|high|ultra` · `?backend=webgl2` · `?players=2` (PC split screen) · `?touch=1|0` · `?seed=N` · `?racers=4..8`
+
+## Status
+
+**M0 — Setup** done: renderer bootstrap with backend detection, fixed-step loop, seeded RNG, event bus, tunables registry + `?debug` panel, input actions (keyboard P1/P2, gamepad, touch), split screen on PC, quality tiers + dynamic resolution, asset manager skeleton, PWA manifest, unit and e2e tests. Next: **M1 — Look test** (doc 02).

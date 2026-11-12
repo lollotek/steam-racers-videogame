@@ -1,0 +1,279 @@
+:root {
+  --ink: #1b1210;
+  --shadow: #2b1f22;
+  --iron-dark: #3a3330;
+  --iron: #5a514b;
+  --rust: #7a4a2e;
+  --brass: #b08a4a;
+  --steam: #d8d2c8;
+  --fire: #ff8a2a;
+  --fire-core: #ffd27a;
+  --font: 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--ink);
+  color: var(--steam);
+  font-family: var(--font);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  overscroll-behavior: none;
+}
+
+#viewport,
+#ui {
+  position: fixed;
+  inset: 0;
+}
+
+#viewport canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+#ui {
+  pointer-events: none;
+}
+
+.ui-root {
+  position: absolute;
+  inset: 0;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+/* HUD (placeholder layout, gameplay.md §9.2) */
+.hud {
+  position: absolute;
+  left: max(12px, env(safe-area-inset-left));
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-shadow: 0 1px 0 var(--ink);
+}
+.hud.p-top {
+  top: max(12px, env(safe-area-inset-top));
+}
+.split .hud.p-bottom {
+  top: calc(50% + 12px);
+}
+
+.gear-plate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 56px;
+  padding: 4px 10px;
+  background: linear-gradient(#c9a35d, var(--brass));
+  color: var(--ink);
+  border: 3px solid var(--ink);
+  border-radius: 6px;
+  box-shadow: 0 2px 0 var(--ink);
+}
+.gear-label {
+  font-size: 10px;
+  letter-spacing: 2px;
+  font-weight: 700;
+}
+.gear {
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1;
+}
+.gear.red {
+  color: #9b1d12;
+}
+.speed {
+  font-size: 20px;
+  font-weight: 700;
+}
+.push {
+  padding: 2px 8px;
+  border: 2px solid var(--iron);
+  border-radius: 4px;
+  color: var(--iron);
+  font-size: 12px;
+  font-weight: 700;
+}
+.push.ready {
+  border-color: var(--fire);
+  color: var(--fire-core);
+}
+.device {
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+.badge {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: max(6px, env(safe-area-inset-bottom));
+  white-space: nowrap;
+  font-size: 11px;
+  opacity: 0.55;
+}
+
+/* Overlays */
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(27, 18, 16, 0.6);
+  pointer-events: auto;
+}
+.panel {
+  padding: 18px 28px;
+  background: var(--shadow);
+  border: 3px solid var(--brass);
+  border-radius: 8px;
+  text-align: center;
+}
+.panel h1 {
+  margin: 0 0 6px;
+  color: var(--fire-core);
+  letter-spacing: 3px;
+  text-transform: uppercase;
+}
+.panel.error {
+  border-color: #c8401a;
+  max-width: 80vw;
+}
+
+.rotate-hint {
+  display: none;
+}
+@media (orientation: portrait) and (pointer: coarse) {
+  .rotate-hint {
+    display: grid;
+    place-items: center;
+    position: absolute;
+    inset: 0;
+    background: var(--ink);
+    color: var(--brass);
+    font-size: 20px;
+    pointer-events: auto;
+  }
+}
+
+/* Touch controls (gameplay.md Appendix) */
+.touch-controls {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.steer-pad {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 42%;
+  height: 62%;
+  pointer-events: auto;
+  touch-action: none;
+}
+.steer-hint {
+  position: absolute;
+  left: max(28px, env(safe-area-inset-left));
+  bottom: max(36px, env(safe-area-inset-bottom));
+  padding: 10px 16px;
+  border: 2px dashed rgba(216, 210, 200, 0.35);
+  border-radius: 40px;
+  color: rgba(216, 210, 200, 0.6);
+  font-weight: 700;
+  letter-spacing: 2px;
+}
+.steer-base {
+  position: absolute;
+  width: 170px;
+  height: 64px;
+  margin: -32px 0 0 -85px;
+  border-radius: 32px;
+  background: rgba(43, 31, 34, 0.55);
+  border: 2px solid rgba(176, 138, 74, 0.6);
+}
+.steer-knob {
+  position: absolute;
+  left: 57px;
+  top: 4px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--brass);
+  border: 3px solid var(--ink);
+}
+.touch-right {
+  position: absolute;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: max(14px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+.touch-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+.tbtn {
+  display: grid;
+  place-items: center;
+  pointer-events: auto;
+  touch-action: none;
+  border-radius: 50%;
+  background: rgba(43, 31, 34, 0.7);
+  border: 2px solid var(--brass);
+  color: var(--steam);
+  font-weight: 800;
+  font-size: 12px;
+}
+.touch-row.small .tbtn {
+  width: 46px;
+  height: 46px;
+}
+.tbtn.pedal {
+  width: 92px;
+  height: 64px;
+  border-radius: 12px;
+}
+.tbtn.steam {
+  width: 104px;
+  height: 104px;
+  font-size: 16px;
+  border-color: var(--fire);
+  background: rgba(122, 74, 46, 0.75);
+}
+.tbtn.down {
+  background: var(--brass);
+  color: var(--ink);
+}
+
+/* Debug panel container (tweakpane) */
+#debug-panel {
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  width: min(320px, 46vw);
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  z-index: 20;
+  pointer-events: auto;
+}
+#debug-stats {
+  position: fixed;
+  left: 8px;
+  bottom: 8px;
+  z-index: 20;
+  pointer-events: none;
+}
