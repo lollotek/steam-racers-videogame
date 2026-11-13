@@ -14,6 +14,16 @@ test('boots, renders and runs the fixed-step simulation without errors', async (
   expect(errors).toEqual([]);
 });
 
+test('track format v2: the proving ground (heights, jumps, crates, hazards) boots and runs', async ({ page }) => {
+  const errors = await boot(page, 'track=proving-ground');
+  const a = await snapshot(page);
+  await page.waitForTimeout(1000);
+  const b = await snapshot(page);
+  expect(b.simSteps - a.simSteps).toBeGreaterThan(20);
+  await expect(page.getByTestId('hud-p1')).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test('forced WebGL2 fallback works', async ({ page }) => {
   const errors = await boot(page, 'backend=webgl2');
   expect((await snapshot(page)).backend).toBe('webgl2');

@@ -12,7 +12,7 @@
 import { tunables } from '../core/tunables';
 import type { Barricade } from '../track/track-format';
 
-export const BARRICADES: readonly Barricade[] = ['earth', 'riveted', 'hedgehog', 'corrugated', 'sandbags', 'barbed'];
+export const BARRICADES: readonly Barricade[] = ['earth', 'riveted', 'hedgehog', 'corrugated', 'sandbags', 'barbed', 'stone', 'runepylon', 'ironrail', 'wreckwall', 'tyres', 'roots', 'crystal'];
 
 interface BarricadeDefaults {
   /** Top speed while scraping, as a fraction of the vehicle max speed. */
@@ -41,6 +41,21 @@ const DEFAULTS: Record<Barricade, BarricadeDefaults> = {
   sandbags: { scrapeSpeed: 0.5, scrapeDrag: 14, hitLoss: 0.15, crashScale: 1.6, gearLoss: 0, inset: 0 },
   // Barbed wire: no damage, but a gear is lost and the car is held back.
   barbed: { scrapeSpeed: 0.55, scrapeDrag: 12, hitLoss: 0.2, crashScale: 1.3, gearLoss: 1, inset: 0.5 },
+  // v2 (doc 04 §5).
+  // Dwarven stone parapet: hard like riveted plates, a little rougher.
+  stone: { scrapeSpeed: 0.8, scrapeDrag: 6, hitLoss: 0.3, crashScale: 0.95, gearLoss: 0, inset: 0.4 },
+  // Rune pylons: smooth arc field, no damage, but contact drains steam (race-rules).
+  runepylon: { scrapeSpeed: 0.8, scrapeDrag: 6, hitLoss: 0.2, crashScale: 1.1, gearLoss: 0, inset: 0.5 },
+  // Victorian cast-iron railing: smooth scrape, damage only at violent hits.
+  ironrail: { scrapeSpeed: 0.85, scrapeDrag: 4, hitLoss: 0.25, crashScale: 1.05, gearLoss: 0, inset: 0.3 },
+  // Orc wreck wall: piled car wrecks, like hedgehogs.
+  wreckwall: { scrapeSpeed: 0.5, scrapeDrag: 14, hitLoss: 0.45, crashScale: 0.85, gearLoss: 0, inset: 0.2 },
+  // Tyre stacks: soft, absorb crashes, slow the scrape.
+  tyres: { scrapeSpeed: 0.55, scrapeDrag: 12, hitLoss: 0.15, crashScale: 1.7, gearLoss: 0, inset: 0.2 },
+  // Elven living roots: soft, slow like sandbags.
+  roots: { scrapeSpeed: 0.5, scrapeDrag: 13, hitLoss: 0.15, crashScale: 1.5, gearLoss: 0, inset: 0 },
+  // Elven crystal rail: hard and slippery: almost no scrape slowdown.
+  crystal: { scrapeSpeed: 0.92, scrapeDrag: 3, hitLoss: 0.3, crashScale: 1, gearLoss: 0, inset: 0.4 },
 };
 
 tunables.registerGroup('barricades', [
@@ -52,6 +67,8 @@ tunables.registerGroup('barricades', [
   { key: 'barricades.contactBand', type: 'number', default: 0.3, min: 0.02, max: 1, step: 0.01, unit: 'm', label: 'Contact band (scrape distance)' },
   { key: 'barricades.releaseTime', type: 'number', default: 0.25, min: 0, max: 2, step: 0.05, unit: 's', label: 'Time off the edge before contact ends' },
   { key: 'barricades.rehitTime', type: 'number', default: 0.6, min: 0, max: 3, step: 0.05, unit: 's', label: 'Time off the edge before a new hit counts' },
+  { key: 'barricades.runepylon.drain', type: 'number', default: 1, min: 0, max: 5, step: 1, unit: 'PV', label: 'Rune pylon: PV drained' },
+  { key: 'barricades.runepylon.drainEvery', type: 'number', default: 1.5, min: 0.2, max: 10, step: 0.1, unit: 's', label: 'Rune pylon: drain every (scrape)' },
   { key: 'barricades.scrapeTick', type: 'number', default: 0.5, min: 0.1, max: 3, step: 0.05, unit: 's', label: 'Scrape event interval (damage tick, M3)' },
   ...BARRICADES.flatMap((b) => {
     const d = DEFAULTS[b];

@@ -143,6 +143,11 @@ function PlayerHudView({ p, split }: { p: PlayerHud; split: boolean }) {
           <span class="ammo-count">{p.armed ? p.ammo : `LOCKED · LAP ${p.unlockLap + 1}`}</span>
         </div>
         <BoilerGauge p={p} />
+        {p.money > 0 && (
+          <div class="money" data-testid={`money-p${p.index + 1}`} title="Cup money collected">
+            $ {p.money.toLocaleString('en-US')}
+          </div>
+        )}
       </div>
       {p.wrongWay && !p.finished && <div class="wrong-way">WRONG WAY</div>}
       {p.finished && <div class="finished">FINISH</div>}

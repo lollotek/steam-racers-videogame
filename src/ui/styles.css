@@ -1013,3 +1013,16 @@ body.touch-ui .badge {
   bottom: auto;
   font-size: 9px;
 }
+
+/* Cup money collected on the track (doc 04 A3). */
+.money {
+  display: flex;
+  align-items: center;
+  padding: 3px 8px;
+  background: rgba(27, 18, 16, 0.6);
+  border: 2px solid var(--iron-dark);
+  border-radius: 4px;
+  color: var(--fire-core);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}

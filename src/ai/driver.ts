@@ -9,6 +9,7 @@ import { tunables } from '../core/tunables';
 import type { RaceSim } from '../sim/race-sim';
 import { createAutopilot, drive, type AutopilotState } from './autopilot';
 import { boilerCal } from '../rules/boiler';
+import { distanceTo, hazardClock, isThreat } from '../track/hazards';
 import { isLocked } from '../rules/cannon';
 
 tunables.registerGroup('ai', [
@@ -17,6 +18,8 @@ tunables.registerGroup('ai', [
   { key: 'ai.avoidDistance', type: 'number', default: 16, min: 0, max: 40, step: 1, unit: 'm', label: 'Avoidance: look ahead' },
   { key: 'ai.avoidGap', type: 'number', default: 3.2, min: 0.5, max: 8, step: 0.1, unit: 'm', label: 'Avoidance: lateral gap' },
   { key: 'ai.ventPressure', type: 'number', default: 0.6, min: 0, max: 1, step: 0.05, label: 'Vents voluntarily above pressure' },
+  { key: 'ai.hazardLook', type: 'number', default: 80, min: 0, max: 200, step: 5, unit: 'm', label: 'Hazards: look ahead' },
+  { key: 'ai.pickupReach', type: 'number', default: 4, min: 0, max: 14, step: 0.5, unit: 'm', label: 'Crates: max detour from the line' },
 ]);
 
 export interface DriverState {
@@ -28,11 +31,14 @@ export interface DriverState {
   startAim: number;
   /** Needle position at which the driver presses VENT during the current boiler test. */
   ventAt: number | null;
+  /** Hazard cycle keys (id × 1000 + cycle) this driver decided to respect / ignore. */
+  heeded: number;
+  ignored: number;
 }
 
 export function createDriver(index: number, seed: number, baseOffset: number): DriverState {
   const rng = new Rng(hashString(`${seed}:ai:${index}`));
-  return { index, ap: createAutopilot(baseOffset), baseOffset, rng, startAim: 0, ventAt: null };
+  return { index, ap: createAutopilot(baseOffset), baseOffset, rng, startAim: 0, ventAt: null, heeded: -1, ignored: -1 };
 }
 
 const IDLE = emptyFrame();
@@ -76,23 +82,94 @@ export function driveRacer(d: DriverState, sim: RaceSim): ActionFrame {
   return f;
 }
 
+/**
+ * Lateral goal and gear cap from the track features ahead (doc 04 A3/A4): steer around a hazard
+ * that covers part of the road, wait for one that covers all of it, follow sap streams, pick up
+ * crates near the line. Reaction to hazards depends on `ai.skill` (some drivers just go for it).
+ */
+function featureGoal(d: DriverState, sim: RaceSim, base: number): number {
+  const me = sim.racers[d.index]!;
+  const track = sim.track;
+  const lim = track.halfWidth - 2.5;
+  const speed = Math.max(6, Math.abs(me.vehicle.telemetry.forwardSpeed));
+  const skill = tunables.get<number>('ai.skill');
+  let goal = base;
+  for (const h of track.hazards) {
+    const dist = distanceTo(h, me.progress.s, track.length);
+    if (dist > tunables.get<number>('ai.hazardLook')) continue;
+    const reward = !!(h.effects.active?.steamRate || h.effects.active?.steam) && !isThreat(h.effects.active);
+    if (reward) {
+      if (me.rules.boiler.pv < boilerCal(me.rules.boiler)) goal = Math.max(-lim, Math.min(lim, h.latC));
+      continue;
+    }
+    // Is any threat phase on while I would be inside the zone?
+    const t0 = sim.clock + dist / speed;
+    const t1 = t0 + (h.s1 - h.s0 + 8) / speed;
+    let threat = false;
+    for (let t = t0; t <= t1 && !threat; t += 0.2) threat = isThreat(h.effects[hazardClock(h, t).phase]);
+    if (!threat) continue;
+    // Skill check, once per hazard cycle: a careless driver ignores it.
+    const cycle = Math.floor((sim.clock + h.phase) / h.period);
+    const key = h.id * 1000 + cycle;
+    if (d.ignored !== key && d.heeded !== key) {
+      if (d.rng.next() < 0.25 + 0.75 * skill) d.heeded = key;
+      else d.ignored = key;
+    }
+    if (d.ignored === key) continue;
+    const full = h.lat0 <= -track.halfWidth + 1.5 && h.lat1 >= track.halfWidth - 1.5;
+    if (!full) {
+      // Steer to the free side with more room.
+      const leftRoom = h.lat0 + track.halfWidth;
+      const rightRoom = track.halfWidth - h.lat1;
+      goal = rightRoom > leftRoom ? Math.min(lim, (h.lat1 + track.halfWidth) / 2) : Math.max(-lim, (h.lat0 - track.halfWidth) / 2);
+    } else if (dist > 6) d.ap.gearCap = Math.min(d.ap.gearCap, 1);
+  }
+  // Crates near the line: coal when the boiler has room, money always.
+  let best = Infinity;
+  track.pickups.forEach((p, i) => {
+    if (!sim.features.pickups[i]!.active) return;
+    if (p.kind === 'coal' && me.rules.boiler.pv >= boilerCal(me.rules.boiler)) return;
+    const ahead = (((p.s - me.progress.s) % track.length) + track.length) % track.length;
+    if (ahead < 8 || ahead > 60 || ahead > best) return;
+    if (Math.abs(p.lateral - goal) > tunables.get<number>('ai.pickupReach')) return;
+    best = ahead;
+    goal = Math.max(-lim, Math.min(lim, p.lateral));
+  });
+  return goal;
+}
+
 /** Shift the racing line away from a slower car just ahead, then ease back. */
 function avoid(d: DriverState, sim: RaceSim): void {
   const me = sim.racers[d.index]!;
   const look = tunables.get<number>('ai.avoidDistance');
   const gap = tunables.get<number>('ai.avoidGap');
   const lim = sim.track.halfWidth - 2.5;
-  let goal = d.baseOffset;
+  d.ap.gearCap = 6;
+  const goal0 = featureGoal(d, sim, d.baseOffset);
+  // Everything slower just ahead on this lap position (a lapped wreck is still in the way): pick
+  // the lateral line with the most clearance, close to the wanted one. Several obstacles side by
+  // side (two wrecks at a level crossing) leave the gap between them, or the edge.
+  const L = sim.track.length;
+  const mySpeed = me.vehicle.telemetry.forwardSpeed;
+  const obstacles: { lat: number; w: number }[] = [];
   for (const o of sim.racers) {
     if (o === me) continue;
-    const ahead = o.progress.distance - me.progress.distance;
+    const ahead = (((o.progress.s - me.progress.s) % L) + L) % L;
     if (ahead <= 0 || ahead > look) continue;
-    const dl = me.progress.lateral - o.progress.lateral;
-    if (Math.abs(dl) >= gap) continue;
-    // Pass on the side with more room.
-    const side = o.progress.lateral > 0 ? -1 : 1;
-    goal = Math.max(-lim, Math.min(lim, o.progress.lateral + side * gap * 1.1));
-    break;
+    if (!o.vehicle.wrecked && o.vehicle.telemetry.forwardSpeed > mySpeed + 1) continue;
+    obstacles.push({ lat: o.progress.lateral, w: 1 - 0.5 * (ahead / look) });
+  }
+  let goal = goal0;
+  if (obstacles.some((o) => Math.abs(o.lat - me.progress.lateral) < gap || Math.abs(o.lat - goal0) < gap)) {
+    let best = Infinity;
+    for (let c = -lim; c <= lim + 1e-6; c += 0.5) {
+      let cost = Math.abs(c - goal0) * 0.3 + Math.abs(c - me.progress.lateral) * 0.15;
+      for (const o of obstacles) cost += Math.max(0, gap * 1.1 - Math.abs(c - o.lat)) * 10 * o.w;
+      if (cost < best) {
+        best = cost;
+        goal = c;
+      }
+    }
   }
   const step = 4 / 60;
   d.ap.lineOffset += Math.max(-step, Math.min(step, goal - d.ap.lineOffset));

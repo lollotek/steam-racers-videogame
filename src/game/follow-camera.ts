@@ -33,6 +33,8 @@ tunables.registerGroup('camera', [
 ]);
 
 export interface CameraTarget {
+  /** Road height under the target (elevated tracks); default 0. */
+  y?: number;
   x: number;
   z: number;
   heading: number;
@@ -92,6 +94,7 @@ export class FollowCamera {
     const ahead = t(`${p}lookAhead`) * target.speedFrac;
     const goalX = target.x + fx * ahead;
     const goalZ = target.z + fz * ahead;
+    const goalY = target.y ?? 0;
 
     // Desired view for the active mode.
     const azimuth = t('camera.board.azimuth') * DEG;
@@ -109,7 +112,7 @@ export class FollowCamera {
     const goalFov = t(`${p}fov`);
 
     if (!this.initialized) {
-      this.focus.set(goalX, 0, goalZ);
+      this.focus.set(goalX, goalY, goalZ);
       this.yaw = goalYaw;
       this.pitch = goalPitch;
       this.dist = goalDist;
@@ -119,6 +122,7 @@ export class FollowCamera {
       const k = damp(t('camera.posHalfLife'), dt);
       this.focus.x += (goalX - this.focus.x) * k;
       this.focus.z += (goalZ - this.focus.z) * k;
+      this.focus.y += (goalY - this.focus.y) * damp(t('camera.posHalfLife') * 3, dt);
       const hl = t('camera.blendHalfLife');
       // In chase mode chaseYaw is already damped; only blend extra when coming from the board view.
       this.yaw = board ? dampAngle(this.yaw, goalYaw, hl, dt) : dampAngle(this.yaw, goalYaw, hl * 0.5, dt);
@@ -136,7 +140,7 @@ export class FollowCamera {
     const back = Math.cos(this.pitch) * this.dist;
     this.camera.position.set(
       this.focus.x - Math.sin(this.yaw) * back,
-      Math.sin(this.pitch) * this.dist,
+      this.focus.y + Math.sin(this.pitch) * this.dist,
       this.focus.z - Math.cos(this.yaw) * back,
     );
     this.camera.lookAt(this.focus);

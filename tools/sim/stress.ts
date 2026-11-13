@@ -1,7 +1,9 @@
 /**
  * Physics stress probe: abusive driving (wall grinding, zig-zag at speed, heavy masses) and
  * stability metrics. A healthy vehicle never tumbles, never flies and never needs a reposition.
- *   npx tsx tools/sim/stress.ts [--verbose]
+ *   npx tsx tools/sim/stress.ts [--verbose] [--track proving-ground]
+ * On an elevated track (ramps, jumps) height, airtime and repositions are expected: only tumbling
+ * (tilt) and spinning (yaw rate) are checked.
  */
 import { RaceSim, initPhysics } from '../../src/sim/race-sim';
 import { HOT_ROD, STEAM_TANK, type VehicleSpec } from '../../src/vehicles/vehicle-physics';
@@ -12,7 +14,10 @@ import { readFileSync } from 'node:fs';
 
 const verbose = process.argv.includes('--verbose');
 await initPhysics();
-const file = JSON.parse(readFileSync(new URL('../../src/tracks/foundry-01.json', import.meta.url), 'utf8')) as TrackFile;
+const ti = process.argv.indexOf('--track');
+const trackId = ti >= 0 ? process.argv[ti + 1]! : 'foundry-01';
+const file = JSON.parse(readFileSync(new URL(`../../src/tracks/${trackId}.json`, import.meta.url), 'utf8')) as TrackFile;
+const elevated = file.pieces.some((p) => p.rise || p.crest || p.type === 'jump');
 
 type Driver = (step: number, f: ActionFrame, sim: RaceSim) => void;
 
@@ -93,7 +98,9 @@ function runCase(spec: VehicleSpec, mass: number, driver: Driver, seconds = 60):
   return m;
 }
 
-const LIMITS = { maxTilt: 15, maxY: 0.3, maxYawRate: 3.5, restBounce: 0.02, airSteps: 5, repositions: 0 };
+const LIMITS = elevated
+  ? { maxTilt: 40, maxY: Infinity, maxYawRate: 3.5, restBounce: 0.02, airSteps: Infinity, repositions: Infinity }
+  : { maxTilt: 15, maxY: 0.3, maxYawRate: 3.5, restBounce: 0.02, airSteps: 5, repositions: 0 };
 let failures = 0;
 const rows: string[] = [];
 for (const [specName, spec] of [['hotrod', HOT_ROD], ['tank', STEAM_TANK]] as const) {

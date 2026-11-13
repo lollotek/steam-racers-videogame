@@ -129,3 +129,23 @@ Goal (doc 03 §18): complete 3-lap race vs 3 AI at target FPS on both device cla
 - [ ] The gear + steam tag stays centred under the car through every bend, and is always below overlays (pause, results, loading).
 - [ ] Complete 3-lap race vs 3 AI at ≥ 30 fps (Medium).
 
+## M4 phase A — Biomes, track v2, crates, hazards, jumps
+
+Goal (doc 04 §3 A): the foundations of the Cup work on a test track. Open `?track=proving-ground` (add `&debug` for the tunables groups `pickups`, `jumps`, `hazards`).
+
+### PC
+
+- [ ] `foundry-01` looks and plays as before (furnaces, signs, catwalk, molten pool, hall; console: `[world] foundry: dressing 3356 instances`).
+- [ ] Proving ground: the road climbs a ramp onto flagstones (stone parapet left, rune pylons right with a cyan arc; scraping the pylons shows RUNE PYLON: −1 PV).
+- [ ] Jump down a level over a lava pit: in 4th–5th the car clears it (CLEAN LANDING +1 PV); too slow → falls in the pit and is put back after the landing.
+- [ ] Canal-bridge crest on cobbles: the car goes light on top; the camera follows the height smoothly.
+- [ ] Money bags on the bridge: +$5,000 banner, `$` box appears in the HUD strip; crates come back after ~8 s.
+- [ ] Level crossing: lamps blink and barriers drop (cars slowed), then a train crosses: anyone on the rails crashes (TRAIN!: CRASH, −3 PF). The AI waits for it.
+- [ ] Sap stream on the heartwood: the cyan lane pulses; driving on it during the pulse gives PV, between pulses it is slippery.
+- [ ] Second jump on sand between tyre walls, then the forge vent grate: it glows, then fire jets (−1 PF, +1 PV if you cross while active).
+- [ ] Magnet crane on the scrap straight: the shadow grows, the block drops on the left half of the road and blocks it for ~6 s; the AI passes on the right.
+- [ ] A full 3-lap race vs 3 AI finishes (some may be wrecked) with no car stuck.
+
+### Phone
+
+- [ ] Proving ground runs at ≥ 30 fps (Medium); crates, hazard glows and jump pits readable.

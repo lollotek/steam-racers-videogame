@@ -441,6 +441,127 @@ export interface ProceduralSet {
   brass: Texture;
   puff: Texture;
   banner: Texture;
+  /** v2 surfaces (doc 04 §5): neutral tones, tinted per biome. */
+  flagstone: Texture;
+  cobble: Texture;
+  planks: Texture;
+  rails: Texture;
+}
+
+/**
+ * Stone paving, neutral grey so materials tint it per biome (doc 04 §5).
+ * `n` stones per row: 3 = carved dwarven flagstones, 9 = Victorian cobbles (staggered rows).
+ */
+export function makeStones(seed: number, n: number, size = 512): Texture {
+  const rng = new Rng(seed);
+  const [c, ctx] = canvas(size);
+  ctx.fillStyle = '#2A2624';
+  ctx.fillRect(0, 0, size, size);
+  const rows = n;
+  const h = size / rows;
+  const w = size / n;
+  const tones = ['#8A8580', '#7E7A76', '#94908A', '#76716C', '#86817A'];
+  const gap = Math.max(3, w * 0.06);
+  for (let j = 0; j < rows; j++) {
+    const off = n > 4 && j % 2 ? w / 2 : 0;
+    for (let i = -1; i <= n; i++) {
+      const x = i * w + off;
+      const y = j * h;
+      const jx = n > 4 ? rng.range(-w * 0.05, w * 0.05) : 0;
+      wrapped(size, x, y, (px, py) => {
+        ctx.fillStyle = rng.pick(tones);
+        ctx.beginPath();
+        const r = n > 4 ? w * 0.28 : w * 0.06;
+        ctx.roundRect(px + gap / 2 + jx, py + gap / 2, w - gap, h - gap, r);
+        ctx.fill();
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = n > 4 ? 3 : 6;
+        ctx.stroke();
+      });
+    }
+  }
+  blotches(ctx, rng, size, 30, ['#5A5048', '#3A332E', '#6A6A5A'], 20, 80, [0.2, 0.45]);
+  speckle(ctx, rng, size, 1600, '#2E2A26', 1.8, 0.4);
+  speckle(ctx, rng, size, 600, '#C8C0B4', 1.4, 0.3);
+  if (n <= 4) {
+    // Carved inlay lines on the big slabs (rune seams; the emissive look comes from the biome).
+    ctx.strokeStyle = hexA(INK, 0.7);
+    ctx.lineWidth = 3;
+    for (let k = 0; k < n; k++) {
+      ctx.beginPath();
+      ctx.moveTo(k * w + w * 0.2, h * 0.5);
+      ctx.lineTo(k * w + w * 0.8, h * 0.5);
+      ctx.moveTo(k * w + w * 0.5, h * 0.3);
+      ctx.lineTo(k * w + w * 0.5, h * 0.7);
+      ctx.stroke();
+    }
+  }
+  scratches(ctx, rng, size, 60);
+  return toTexture(c, true);
+}
+
+/** Wooden planks along the road (v), neutral warm grey so the biome tints them (heartwood, boardwalks). */
+export function makePlanks(seed: number, size = 512): Texture {
+  const rng = new Rng(seed);
+  const [c, ctx] = canvas(size);
+  const n = 6;
+  const w = size / n;
+  for (let i = 0; i < n; i++) {
+    ctx.fillStyle = rng.pick(['#8A7C6E', '#7E7064', '#948676', '#84766A']);
+    ctx.fillRect(i * w, 0, w, size);
+    ctx.strokeStyle = hexA(INK, 0.35);
+    ctx.lineWidth = 1.4;
+    for (let k = 0; k < 7; k++) {
+      const x = i * w + rng.range(6, w - 6);
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.bezierCurveTo(x + rng.range(-8, 8), size * 0.33, x + rng.range(-8, 8), size * 0.66, x, size);
+      ctx.stroke();
+    }
+    const cut = rng.range(0.2, 0.8) * size;
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(i * w, cut);
+    ctx.lineTo(i * w + w, cut);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 6;
+  for (let i = 0; i <= n; i++) {
+    ctx.beginPath();
+    ctx.moveTo(i * w, 0);
+    ctx.lineTo(i * w, size);
+    ctx.stroke();
+  }
+  blotches(ctx, rng, size, 20, ['#4A4038', '#5A6A48'], 20, 70, [0.2, 0.4]);
+  return toTexture(c, true);
+}
+
+/** Packed ballast with two sunk rails and sleepers (mine and tram rails, v along the road). */
+export function makeRails(seed: number, size = 512): Texture {
+  const rng = new Rng(seed);
+  const [c, ctx] = canvas(size);
+  ctx.fillStyle = '#5E5650';
+  ctx.fillRect(0, 0, size, size);
+  speckle(ctx, rng, size, 2600, '#3A332E', 2.4, 0.5);
+  speckle(ctx, rng, size, 900, '#9A9088', 2, 0.4);
+  for (let k = 0; k < 4; k++) {
+    const y = (k + 0.5) * (size / 4);
+    ctx.fillStyle = '#4A3A2E';
+    ctx.fillRect(size * 0.12, y - 12, size * 0.76, 24);
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(size * 0.12, y - 12, size * 0.76, 24);
+  }
+  for (const x of [0.3, 0.7]) {
+    ctx.fillStyle = '#9A948C';
+    ctx.fillRect(size * x - 7, 0, 14, size);
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(size * x - 7, -2, 14, size + 4);
+  }
+  return toTexture(c, true);
 }
 
 export function makeProceduralSet(seed: number): ProceduralSet {
@@ -456,5 +577,9 @@ export function makeProceduralSet(seed: number): ProceduralSet {
     brass: makePanels(seed + 8, 'brass'),
     puff: makePuff(seed + 9),
     banner: makeBanner(seed + 10),
+    flagstone: makeStones(seed + 11, 3),
+    cobble: makeStones(seed + 12, 9),
+    planks: makePlanks(seed + 13),
+    rails: makeRails(seed + 14),
   };
 }

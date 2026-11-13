@@ -40,6 +40,8 @@ export interface PlayerHud {
   lastLap: number | null;
   wrongWay: boolean;
   finished: boolean;
+  /** Cup money collected on the track this race (money bags, doc 04 A3). */
+  money: number;
 }
 
 export interface ResultRow {

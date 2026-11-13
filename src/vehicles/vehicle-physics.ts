@@ -91,6 +91,9 @@ export class PhysicsVehicle {
   stun = 0;
   /** Engine target multiplier while scraping a barricade (1 = free). */
   edgeSlow = 1;
+  /** Hazard zone modifiers for this step (track-features.ts): grip and engine target multipliers. */
+  gripMul = 1;
+  hazardSlow = 1;
   /** Wreck (0 PF): engine off for good, brakes locked; stays on the track as an obstacle. */
   wrecked = false;
   /** Half width of the collider (covers the wheels). */
@@ -104,13 +107,13 @@ export class PhysicsVehicle {
     private readonly rapier: R,
     private world: RAPIER.World,
     readonly spec: VehicleSpec,
-    spawn: { x: number; z: number; heading: number },
+    spawn: { x: number; y?: number; z: number; heading: number },
     boiler?: BoilerState,
   ) {
     this.gearbox = createGearbox(boiler);
     const { half } = spec;
     const bodyDesc = rapier.RigidBodyDesc.dynamic()
-      .setTranslation(spawn.x, spec.wheelRadius + 0.6, spawn.z)
+      .setTranslation(spawn.x, (spawn.y ?? 0) + spec.wheelRadius + 0.6, spawn.z)
       .setRotation(yawQuat(spawn.heading))
       .setLinearDamping(0.05)
       .setAngularDamping(0.8)
@@ -176,11 +179,11 @@ export class PhysicsVehicle {
 
     const pos = this.body.translation();
     const surface = surfaceAt(pos.x, pos.z);
-    const grip = SURFACE_GRIP[surface];
+    const grip = SURFACE_GRIP[surface] * this.gripMul;
     const speedFrac = Math.min(1, Math.abs(fwdSpeed) / maxSpeed);
 
     // Engine: chase the gear target speed (proportional, capped by acceleration).
-    const target = out.targetRatio * maxSpeed * this.edgeSlow;
+    const target = out.targetRatio * maxSpeed * this.edgeSlow * this.hazardSlow;
     const nDriven = this.spec.drive === 'all' ? 4 : 2;
     let accel = 0;
     let brake = 0;
@@ -331,8 +334,8 @@ export class PhysicsVehicle {
   }
 
   /** Put the vehicle at a pose with zero velocity (reposition / respawn). */
-  teleport(x: number, z: number, heading: number): void {
-    this.body.setTranslation({ x, y: this.spec.wheelRadius + 0.6, z }, true);
+  teleport(x: number, z: number, heading: number, y = 0): void {
+    this.body.setTranslation({ x, y: y + this.spec.wheelRadius + 0.6, z }, true);
     this.body.setRotation(yawQuat(heading), true);
     this.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
     this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);

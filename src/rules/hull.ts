@@ -15,6 +15,13 @@ const EDGE_DAMAGE: Record<Barricade, { hit: number; crash: number; scrapeEvery: 
   corrugated: { hit: 1, crash: 1, scrapeEvery: 0 },
   sandbags: { hit: 0, crash: 1, scrapeEvery: 0 },
   barbed: { hit: 0, crash: 0, scrapeEvery: 0 },
+  stone: { hit: 1, crash: 2, scrapeEvery: 0 },
+  runepylon: { hit: 0, crash: 1, scrapeEvery: 0 },
+  ironrail: { hit: 0, crash: 2, scrapeEvery: 0 },
+  wreckwall: { hit: 2, crash: 3, scrapeEvery: 1.5 },
+  tyres: { hit: 0, crash: 0, scrapeEvery: 0 },
+  roots: { hit: 0, crash: 1, scrapeEvery: 0 },
+  crystal: { hit: 0, crash: 2, scrapeEvery: 0 },
 };
 
 tunables.registerGroup('hull', [

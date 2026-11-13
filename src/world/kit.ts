@@ -1,0 +1,222 @@
+/**
+ * Shared building blocks for biome worlds (doc 04 §3 A1): ink materials, painted canvas textures,
+ * light pools, molten pools and road ribbons. Moved out of the M1 foundry scene unchanged.
+ */
+import {
+  AdditiveBlending,
+  BufferGeometry,
+  CanvasTexture,
+  Color,
+  Float32BufferAttribute,
+  Mesh,
+  MeshBasicNodeMaterial,
+  PlaneGeometry,
+  SRGBColorSpace,
+  type Texture,
+} from 'three/webgpu';
+import { float, mix, smoothstep, texture, time, uv, vec2, vec3, vec4 } from 'three/tsl';
+import { InkLitMaterial } from '../render/ink/ink-material';
+import type { CompiledTrack } from '../track/compile';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type N = any;
+
+export function ink(p: ConstructorParameters<typeof InkLitMaterial>[0]): InkLitMaterial {
+  return new InkLitMaterial(p);
+}
+
+export function textTexture(lines: string[], bg: string, fg: string, w = 512, h = 256, inkColor = '#1B1210', grime = 'rgba(122,74,46,A)'): Texture {
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext('2d')!;
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, w, h);
+  ctx.strokeStyle = inkColor;
+  ctx.lineWidth = 14;
+  ctx.strokeRect(0, 0, w, h);
+  ctx.fillStyle = fg;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  lines.forEach((l, i) => {
+    ctx.font = `900 ${i === 0 ? 96 : 52}px Impact, 'Arial Black', sans-serif`;
+    ctx.fillText(l, w / 2, h * (lines.length === 1 ? 0.5 : 0.36 + i * 0.36));
+    ctx.lineWidth = 3;
+    ctx.strokeText(l, w / 2, h * (lines.length === 1 ? 0.5 : 0.36 + i * 0.36));
+  });
+  // Drips and grime.
+  for (let i = 0; i < 40; i++) {
+    ctx.fillStyle = grime.replace('A', String(0.2 + Math.random() * 0.3));
+    ctx.fillRect(Math.random() * w, Math.random() * h, 3 + Math.random() * 6, 10 + Math.random() * 40);
+  }
+  const t = new CanvasTexture(c);
+  t.colorSpace = SRGBColorSpace;
+  return t;
+}
+
+/** Neon sign: glowing emblem on black (used as emissive mask). */
+export function neonTexture(kind: 'gear' | 'bolt'): Texture {
+  const s = 256;
+  const c = document.createElement('canvas');
+  c.width = c.height = s;
+  const ctx = c.getContext('2d')!;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, s, s);
+  ctx.strokeStyle = '#fff';
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.shadowColor = '#fff';
+  ctx.shadowBlur = 12;
+  ctx.lineWidth = 9;
+  ctx.translate(s / 2, s / 2);
+  if (kind === 'gear') {
+    const teeth = 10;
+    ctx.beginPath();
+    for (let i = 0; i <= teeth * 2; i++) {
+      const a = (i / (teeth * 2)) * Math.PI * 2;
+      const r = i % 2 === 0 ? 100 : 82;
+      ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+    }
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(-22, -8, 14, 0, Math.PI * 2);
+    ctx.moveTo(36, -8);
+    ctx.arc(22, -8, 14, 0, Math.PI * 2);
+    ctx.moveTo(-26, 36);
+    ctx.lineTo(26, 36);
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(20, -100);
+    ctx.lineTo(-40, 10);
+    ctx.lineTo(10, 10);
+    ctx.lineTo(-20, 100);
+    ctx.lineTo(50, -20);
+    ctx.lineTo(0, -20);
+    ctx.closePath();
+    ctx.stroke();
+  }
+  const t = new CanvasTexture(c);
+  t.colorSpace = SRGBColorSpace;
+  return t;
+}
+
+export function checkerTexture(a = '#1B1210', b = '#D8D2C8'): Texture {
+  const c = document.createElement('canvas');
+  c.width = 512;
+  c.height = 64;
+  const ctx = c.getContext('2d')!;
+  for (let x = 0; x < 16; x++)
+    for (let y = 0; y < 2; y++) {
+      ctx.fillStyle = (x + y) % 2 ? a : b;
+      ctx.fillRect(x * 32, y * 32, 32, 32);
+    }
+  const t = new CanvasTexture(c);
+  t.colorSpace = SRGBColorSpace;
+  return t;
+}
+
+/** Additive glow pool on the ground under a light source (doc 02 §3.4). */
+export function lightPool(color: string, radius: number, strength = 0.18): Mesh {
+  const m = new MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: AdditiveBlending });
+  const d: N = uv().sub(0.5).length().mul(2);
+  m.colorNode = vec4(new Color(color), smoothstep(float(1), float(0), d).pow(2).mul(strength)) as N;
+  (m as N).fog = false;
+  const pool = new Mesh(new PlaneGeometry(radius * 2, radius * 2), m);
+  pool.rotation.x = -Math.PI / 2;
+  pool.position.y = 0.06;
+  pool.renderOrder = 5;
+  return pool;
+}
+
+/** Molten metal: two scrolling noise layers → dark crust vs glowing HDR lava (doc 02 §10). */
+export function lavaMaterial(noise: Texture): MeshBasicNodeMaterial {
+  const m = new MeshBasicNodeMaterial();
+  const n1: N = texture(noise).sample(uv().mul(2.2).add(vec2(time.mul(0.015), time.mul(0.01)))).r;
+  const n2: N = texture(noise).sample(uv().mul(3.7).sub(vec2(time.mul(0.012), time.mul(0.02)))).g;
+  const n: N = n1.mul(0.6).add(n2.mul(0.4));
+  const hot: N = smoothstep(0.42, 0.62, n);
+  const crust = vec3(0.05, 0.025, 0.02);
+  const lava: N = mix(vec3(2.5, 0.6, 0.08), vec3(5.0, 2.4, 0.6), smoothstep(0.62, 0.85, n));
+  m.colorNode = vec4(mix(crust, lava, hot), 1) as N;
+  return m;
+}
+
+/**
+ * Ribbon over `count` consecutive centre-line samples starting at `from` (wraps), following the
+ * road heights. u across, v = s / width. `dy` lifts it above the road (decals) or sinks it (pits).
+ */
+export function ribbonFromSamples(track: CompiledTrack, from: number, count: number, halfWidth: number, dy: number, yOf?: (i: number) => number): BufferGeometry {
+  const pos: number[] = [];
+  const uvs: number[] = [];
+  const idx: number[] = [];
+  const n = track.samples.length;
+  let v = track.samples[from]!.s / (halfWidth * 2);
+  for (let k = 0; k < count; k++) {
+    const i = (from + k) % n;
+    const p = track.samples[i]!;
+    if (k > 0) {
+      const q = track.samples[(from + k - 1) % n]!;
+      v += Math.hypot(p.x - q.x, p.z - q.z) / (halfWidth * 2);
+    }
+    const y = (yOf ? yOf(i) : p.y) + dy;
+    // Left edge first, then right edge (driver's right of the tangent is (-tz, tx)).
+    pos.push(p.x + p.tz * halfWidth, y, p.z - p.tx * halfWidth);
+    uvs.push(0, v);
+    pos.push(p.x - p.tz * halfWidth, y, p.z + p.tx * halfWidth);
+    uvs.push(1, v);
+    if (k < count - 1) {
+      const a = k * 2;
+      idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+    }
+  }
+  const g = new BufferGeometry();
+  g.setAttribute('position', new Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  // Flip the winding if the normals came out facing down.
+  const nr = g.getAttribute('normal');
+  if (nr.count && nr.getY(0) < 0) {
+    const flipped: number[] = [];
+    for (let i = 0; i < idx.length; i += 3) flipped.push(idx[i]!, idx[i + 2]!, idx[i + 1]!);
+    g.setIndex(flipped);
+    g.computeVertexNormals();
+  }
+  return g;
+}
+
+/**
+ * Vertical skirt under one road edge (side −1 = left, +1 = right) from the road down `depth`
+ * metres: closes elevated roads, kickers and the walls of jump pits.
+ */
+export function skirtFromSamples(track: CompiledTrack, from: number, count: number, halfWidth: number, side: number, depth: number): BufferGeometry {
+  const pos: number[] = [];
+  const uvs: number[] = [];
+  const idx: number[] = [];
+  const n = track.samples.length;
+  let v = 0;
+  for (let k = 0; k < count; k++) {
+    const p = track.samples[(from + k) % n]!;
+    if (k > 0) {
+      const q = track.samples[(from + k - 1) % n]!;
+      v += Math.hypot(p.x - q.x, p.z - q.z) / 8;
+    }
+    const x = p.x - p.tz * halfWidth * side;
+    const z = p.z + p.tx * halfWidth * side;
+    pos.push(x, p.y + 0.04, z, x, p.y - depth, z);
+    uvs.push(v, 0, v, depth / 8);
+    if (k < count - 1) {
+      const a = k * 2;
+      // Faces outwards: winding depends on the side.
+      if (side > 0) idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+      else idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+    }
+  }
+  const g = new BufferGeometry();
+  g.setAttribute('position', new Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}

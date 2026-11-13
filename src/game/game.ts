@@ -27,7 +27,9 @@ import { SparkSystem } from '../render/fx/sparks';
 import type { ImpactInfo } from '../sim/race-sim';
 import type { Barricade } from '../track/track-format';
 import { FollowCamera, dampAngle } from './follow-camera';
-import { buildFoundry, type FoundryWorld } from './foundry-scene';
+import { buildWorld, type GameWorld } from '../world/build';
+import { getBiome } from '../biomes';
+import { FeatureViews } from './feature-views';
 import { buildHotRod, buildSteamTank, type VehicleRig } from './vehicles';
 import { RaceSim, SIM_STEP } from '../sim/race-sim';
 import { HOT_ROD, STEAM_TANK, type VehicleSpec } from '../vehicles/vehicle-physics';
@@ -40,8 +42,8 @@ import { Minimap } from '../ui/minimap';
 import type { Banner } from '../ui/state';
 import type { ViewportRect } from '../ui/vehicle-tag';
 import { compileTrack } from '../track/compile';
-import type { TrackFile } from '../track/track-format';
-import foundryTrack from '../tracks/foundry-01.json';
+import { LOOSE_SURFACES, type TrackFile } from '../track/track-format';
+import { getTrack } from '../tracks';
 import { ui } from '../ui/state';
 import { VehicleTag } from '../ui/vehicle-tag';
 import type { SteamReadout } from '../ui/steam-pips';
@@ -72,6 +74,13 @@ const EDGE_FX: Record<Barricade, { sparks: number; dust: number }> = {
   corrugated: { sparks: 1, dust: 0 },
   sandbags: { sparks: 0, dust: 1.2 },
   barbed: { sparks: 0.5, dust: 0.3 },
+  stone: { sparks: 0.8, dust: 0.6 },
+  runepylon: { sparks: 1.4, dust: 0 },
+  ironrail: { sparks: 1, dust: 0 },
+  wreckwall: { sparks: 1.3, dust: 0.2 },
+  tyres: { sparks: 0, dust: 0.6 },
+  roots: { sparks: 0, dust: 1 },
+  crystal: { sparks: 1.2, dust: 0 },
 };
 
 export interface PlayerSlot {
@@ -112,7 +121,7 @@ export class Game {
   readonly loop = new FixedStepLoop({ step: SIM_STEP });
   readonly bus = new EventBus();
   readonly rng: RngStreams;
-  readonly world: FoundryWorld;
+  readonly world: GameWorld;
   readonly scene: Scene;
   readonly slots: PlayerSlot[] = [];
   readonly dynres: DynamicResolution;
@@ -136,6 +145,7 @@ export class Game {
   private races = 0;
   private bannerId = 0;
   private minimap: Minimap | null = null;
+  private features!: FeatureViews;
   private tmp2 = new Vector3();
 
   constructor(
@@ -169,8 +179,9 @@ export class Game {
     SharedTex.noise = this.tex.noise;
     SharedTex.paper = this.tex.paper;
 
-    this.trackFile = flags.laps ? { ...(foundryTrack as TrackFile), laps: flags.laps } : (foundryTrack as TrackFile);
-    this.world = buildFoundry(this.tex, flags.seed, compileTrack(this.trackFile));
+    const file = getTrack(flags.track);
+    this.trackFile = flags.laps ? { ...file, laps: flags.laps } : file;
+    this.world = buildWorld(getBiome(this.trackFile.biome), this.tex, flags.seed, compileTrack(this.trackFile));
     this.scene = this.world.scene;
     this.particles = new ParticleSystem(this.scene, this.tex.puff, flags.seed + 99);
     for (const e of this.world.emitters) this.particles.addEmitter(e);
@@ -182,6 +193,7 @@ export class Game {
     for (let i = 0; i < this.players; i++) this.addSlot(i);
 
     this.startRace();
+    this.features = new FeatureViews(this.scene, this.sim, this.tex, this.particles, this.sparks);
     this.minimap = new Minimap(worldUi(), this.sim.track);
 
     this.gfx.renderer.shadowMap.enabled = true;
@@ -220,6 +232,7 @@ export class Game {
       this.opts.flags.seed + this.races++,
     );
     this.buildViews(specs);
+    if (this.features) this.features.sim = this.sim;
     this.views.forEach((v, i) => (v.driver = i >= this.players ? createDriver(i, this.sim.rules.rng.int(0, 1e9), ((i % 3) - 1) * 1.6) : null));
     for (const s of this.slots) {
       s.camYaw = this.sim.racers[s.index]!.vehicle.heading();
@@ -396,10 +409,11 @@ export class Game {
     if (hit.kind !== 'scrape') {
       // Scrapes already emit continuously (presentation); impacts add a burst.
       const n = Math.min(60, hit.strength * t('feedback.sparkPerHit')) * (hit.kind === 'crash' ? 1.6 : 1);
-      if (fx.sparks > 0) this.sparks.burst(hit.x, 0.8, hit.z, hit.nx, hit.nz, v.x / sp, v.z / sp, Math.round(n * fx.sparks), hit.kind === 'crash' ? 1.3 : 1);
+      const gy = this.world.heightAt(hit.x, hit.z) + 0.25;
+      if (fx.sparks > 0) this.sparks.burst(hit.x, gy + 0.8, hit.z, hit.nx, hit.nz, v.x / sp, v.z / sp, Math.round(n * fx.sparks), hit.kind === 'crash' ? 1.3 : 1);
       if (fx.dust > 0)
         this.particles.burst(
-          { kind: 'dust', rate: 0, position: { x: hit.x, y: 0.5, z: hit.z }, velocity: { x: hit.nx * 2, y: 1.6, z: hit.nz * 2 }, spread: 1.8, life: [0.6, 1.4], size: [1.2, 4] },
+          { kind: 'dust', rate: 0, position: { x: hit.x, y: gy + 0.5, z: hit.z }, velocity: { x: hit.nx * 2, y: 1.6, z: hit.nz * 2 }, spread: 1.8, life: [0.6, 1.4], size: [1.2, 4] },
           Math.round(Math.min(24, n * 0.5) * fx.dust),
         );
     }
@@ -437,8 +451,9 @@ export class Game {
   private onRule(e: RuleEvent): void {
     const sim = this.sim;
     const t = (k: string) => tunables.get<number>(k);
+    const gy = (x: number, z: number) => this.world.heightAt(x, z) + 0.25;
     const steam = (x: number, z: number, n: number, size: [number, number] = [1.5, 4.5]) =>
-      this.particles.burst({ kind: 'steam', rate: 0, position: { x, y: 1.5, z }, velocity: { x: 0, y: 2.2, z: 0 }, spread: 2.2, life: [1, 2.4], size }, n);
+      this.particles.burst({ kind: 'steam', rate: 0, position: { x, y: gy(x, z) + 1.5, z }, velocity: { x: 0, y: 2.2, z: 0 }, spread: 2.2, life: [1, 2.4], size }, n);
     switch (e.type) {
       case 'start': {
         const r = sim.racers[e.racer]!;
@@ -461,8 +476,8 @@ export class Game {
         steam(x, z, e.outcome === 'contained' ? 6 : 18, [2, 6]);
         if (e.outcome === 'explosion') {
           this.banner(e.racer, 'BOILER EXPLODED!', 'bad');
-          this.particles.burst({ kind: 'smoke', rate: 0, position: { x, y: 1.5, z }, velocity: { x: 0, y: 4, z: 0 }, spread: 5, life: [1.5, 3.5], size: [3, 9] }, 30);
-          this.sparks.burst(x, 1.5, z, 0, 0, 0, 0, 60, 1.6);
+          this.particles.burst({ kind: 'smoke', rate: 0, position: { x, y: gy(x, z) + 1.5, z }, velocity: { x: 0, y: 4, z: 0 }, spread: 5, life: [1.5, 3.5], size: [3, 9] }, 30);
+          this.sparks.burst(x, gy(x, z) + 1.5, z, 0, 0, 0, 0, 60, 1.6);
           const rad = t('boiler.shockRadius') * 2.5;
           for (const s of this.slots) {
             const p = sim.racers[s.index]!.vehicle.curr;
@@ -484,12 +499,12 @@ export class Game {
       case 'wreck': {
         const r = sim.racers[e.racer]!;
         this.banner(e.racer, 'WRECKED: RETIRED', 'bad');
-        this.particles.burst({ kind: 'smoke', rate: 0, position: { x: r.vehicle.curr.x, y: 1.5, z: r.vehicle.curr.z }, velocity: { x: 0, y: 4, z: 0 }, spread: 3, life: [1.5, 3], size: [2, 7] }, 20);
+        this.particles.burst({ kind: 'smoke', rate: 0, position: { x: r.vehicle.curr.x, y: r.vehicle.curr.y + 1, z: r.vehicle.curr.z }, velocity: { x: 0, y: 4, z: 0 }, spread: 3, life: [1.5, 3], size: [2, 7] }, 20);
         for (let i = 0; i < this.players; i++) if (i !== e.racer) this.banner(i, `${r.name.toUpperCase()} IS OUT`, 'info');
         break;
       }
       case 'ram': {
-        this.sparks.burst(e.x, 0.9, e.z, 0, 0, 0, 0, 30, 1.2);
+        this.sparks.burst(e.x, gy(e.x, e.z) + 0.9, e.z, 0, 0, 0, 0, 30, 1.2);
         for (const i of [e.a, e.b]) {
           this.slots[i]?.camera.addShake(t('feedback.shakeCrash') * 0.6);
           const won = (e.winner > 0 && i === e.a) || (e.winner < 0 && i === e.b);
@@ -503,20 +518,52 @@ export class Game {
         const len = Math.hypot(dx, dz) || 1;
         const ux = dx / len;
         const uz = dz / len;
-        this.particles.burst({ kind: 'smoke', rate: 0, position: { x: e.x, y: 1.6, z: e.z }, velocity: { x: ux * 4, y: 1, z: uz * 4 }, spread: 0.8, life: [0.5, 1.2], size: [1, 3] }, 6);
+        const y0 = gy(e.x, e.z);
+        const y1 = gy(e.tx, e.tz);
+        this.particles.burst({ kind: 'smoke', rate: 0, position: { x: e.x, y: y0 + 1.6, z: e.z }, velocity: { x: ux * 4, y: 1, z: uz * 4 }, spread: 0.8, life: [0.5, 1.2], size: [1, 3] }, 6);
         // Tracer: a line of sparks along the shell path.
         const n = Math.min(10, Math.ceil(len / 6));
-        for (let k = 0; k <= n; k++) this.sparks.burst(e.x + dx * (k / n), 1.5, e.z + dz * (k / n), 0, 0, -ux, -uz, k === 0 ? 8 : 2, k === 0 ? 1.4 : 0.8);
-        if (e.blocked) this.sparks.burst(e.tx, 1.2, e.tz, -ux, -uz, ux, uz, 24, 1.1);
+        for (let k = 0; k <= n; k++) this.sparks.burst(e.x + dx * (k / n), y0 + (y1 - y0) * (k / n) + 1.5, e.z + dz * (k / n), 0, 0, -ux, -uz, k === 0 ? 8 : 2, k === 0 ? 1.4 : 0.8);
+        if (e.blocked) this.sparks.burst(e.tx, y1 + 1.2, e.tz, -ux, -uz, ux, uz, 24, 1.1);
         else if (e.zone === 'miss')
-          this.particles.burst({ kind: 'dust', rate: 0, position: { x: e.tx, y: 0.5, z: e.tz }, velocity: { x: 0, y: 2, z: 0 }, spread: 1.5, life: [0.6, 1.2], size: [1.5, 4] }, 6);
+          this.particles.burst({ kind: 'dust', rate: 0, position: { x: e.tx, y: y1 + 0.5, z: e.tz }, velocity: { x: 0, y: 2, z: 0 }, spread: 1.5, life: [0.6, 1.2], size: [1.5, 4] }, 6);
         if (e.blocked) this.banner(e.racer, 'BLOCKED BY THE BARRICADE', 'info');
         else if (e.target < 0) this.banner(e.racer, 'NO TARGET', 'info');
         this.slots[e.racer]?.camera.addShake(t('feedback.shakeHit') * 3);
         break;
       }
+      case 'pylon':
+        this.sparks.burst(e.x, gy(e.x, e.z) + 1, e.z, 0, 0, 0, 0, 14, 0.9);
+        this.banner(e.racer, 'RUNE PYLON: -1 PV', 'warn');
+        break;
+      case 'pickup':
+        if (e.kind === 'coal') {
+          this.banner(e.racer, `COAL +${e.amount} PV`, 'good');
+          this.sparks.burst(e.x, e.y + 1.3, e.z, 0, 0, 0, 0, 16, 0.8);
+        } else {
+          this.banner(e.racer, `+$${e.amount.toLocaleString('en-US')}`, 'good');
+          this.sparks.burst(e.x, e.y + 1.3, e.z, 0, 0, 0, 0, 24, 1);
+        }
+        break;
+      case 'landing': {
+        if (e.clean) this.banner(e.racer, e.pv > 0 ? `CLEAN LANDING +${e.pv} PV` : 'CLEAN LANDING', 'good');
+        else this.banner(e.racer, 'HARD LANDING: -1 GEAR', 'bad');
+        const r = sim.racers[e.racer]!;
+        this.particles.burst({ kind: 'dust', rate: 0, position: { x: r.vehicle.curr.x, y: r.vehicle.curr.y - 0.5, z: r.vehicle.curr.z }, velocity: { x: 0, y: 1.5, z: 0 }, spread: 3, life: [0.6, 1.4], size: [1.5, 4.5] }, e.clean ? 10 : 22);
+        this.slots[e.racer]?.camera.addShake(t('feedback.shakeCrash') * (e.clean ? 0.25 : 0.6));
+        break;
+      }
+      case 'hazard': {
+        const name = { vent: 'FORGE VENT', crossing: 'TRAIN!', crane: 'SCRAP BLOCK', stream: 'SAP STREAM' }[e.kind];
+        if (e.effect === 'crash') {
+          this.banner(e.racer, `${name}: CRASH`, 'bad');
+          this.slots[e.racer]?.camera.addShake(t('feedback.shakeCrash'));
+        } else if (e.effect === 'damage' && e.amount > 0) this.slots[e.racer]?.camera.addShake(t('feedback.shakeCrash') * 0.5);
+        else if (e.effect === 'steam' && e.kind !== 'stream') this.banner(e.racer, `${name}: +${e.amount} PV`, 'info');
+        break;
+      }
       case 'hit': {
-        this.sparks.burst(e.x, 1.4, e.z, 0, 0, 0, 0, e.zone === 'edge' ? 10 : e.zone === 'body' ? 22 : 40, e.zone === 'centre' ? 1.5 : 1);
+        this.sparks.burst(e.x, gy(e.x, e.z) + 1.4, e.z, 0, 0, 0, 0, e.zone === 'edge' ? 10 : e.zone === 'body' ? 22 : 40, e.zone === 'centre' ? 1.5 : 1);
         const label = { centre: 'CENTRE HIT! −1 GEAR', vital: 'VITAL HIT', body: 'HIT', edge: 'GRAZED', miss: '' }[e.zone];
         if (label) this.banner(e.from, label, e.zone === 'edge' ? 'info' : 'good');
         if (e.zone !== 'edge') this.banner(e.racer, `SHOT: −${e.pf} PF`, 'dmg');
@@ -578,9 +625,9 @@ export class Game {
         e.rate = 3 + Math.abs(speed) * tunables.get('showcase.smokePerSpeed') + (r.vehicle.lastOutput?.pushing ? 25 : 0);
       });
       // Dust from the rear when drifting or on loose surfaces.
-      const loose = r.vehicle.telemetry.surface === 'dirt' || r.vehicle.telemetry.surface === 'sand';
+      const loose = LOOSE_SURFACES.has(r.vehicle.telemetry.surface);
       v.dust.position.x = root.position.x;
-      v.dust.position.y = 0.4;
+      v.dust.position.y = root.position.y + 0.4;
       v.dust.position.z = root.position.z;
       v.dust.rate = r.vehicle.telemetry.drifting ? 30 : loose ? Math.abs(speed) * 1.2 : 0;
 
@@ -609,10 +656,10 @@ export class Game {
         if (n > 0) {
           const dir = Math.sign(e.slide);
           const smp = sim.track.samples[r.progress.index]!;
-          if (fx.sparks > 0) this.sparks.burst(e.x, 0.7, e.z, e.nx, e.nz, smp.tx * dir, smp.tz * dir, Math.round(n * fx.sparks), 0.5 + 0.5 * frac);
+          if (fx.sparks > 0) this.sparks.burst(e.x, smp.y + 0.7, e.z, e.nx, e.nz, smp.tx * dir, smp.tz * dir, Math.round(n * fx.sparks), 0.5 + 0.5 * frac);
           if (fx.dust > 0)
             this.particles.burst(
-              { kind: 'dust', rate: 0, position: { x: e.x, y: 0.4, z: e.z }, velocity: { x: e.nx * 1.5, y: 1, z: e.nz * 1.5 }, spread: 1.2, life: [0.5, 1.1], size: [1, 3] },
+              { kind: 'dust', rate: 0, position: { x: e.x, y: smp.y + 0.4, z: e.z }, velocity: { x: e.nx * 1.5, y: 1, z: e.nz * 1.5 }, spread: 1.2, life: [0.5, 1.1], size: [1, 3] },
               Math.round(n * 0.25 * fx.dust + 0.4),
             );
         }
@@ -632,12 +679,14 @@ export class Game {
       const blend = tunables.get('showcase.cameraTrackBlend');
       const target = heading + shortAngle(trackYaw - heading) * blend;
       s.camYaw = simDt > 0 ? dampAngle(s.camYaw, target, 0.25, frameDt) : target;
-      s.camera.update({ x: root.position.x, z: root.position.z, heading: s.camYaw, speedFrac: Math.min(1, Math.abs(r.vehicle.telemetry.forwardSpeed) / maxSpeed) }, frameDt);
+      // Height: the road under the car (smooth over jumps and crests), not the bouncing body.
+      s.camera.update({ x: root.position.x, y: smp.y, z: root.position.z, heading: s.camYaw, speedFrac: Math.min(1, Math.abs(r.vehicle.telemetry.forwardSpeed) / maxSpeed) }, frameDt);
     }
 
     const cam = this.slots[0]!.camera.camera;
     const focus = this.views[0]!.rig.root.position;
-    this.world.update(simDt, this.tmp.set(cam.position.x, 0, cam.position.z).lerp(focus, 0.7));
+    this.world.update(simDt, this.tmp.set(cam.position.x, focus.y, cam.position.z).lerp(focus, 0.7));
+    this.features.update(simDt);
     this.particles.update(simDt, cam);
     this.sparks.update(simDt, cam);
   }
@@ -793,6 +842,7 @@ export class Game {
         lastLap: p.lastLap,
         wrongWay: p.wrongWayTime > 1,
         finished: p.finishedAt !== null,
+        money: rr.money,
       };
     });
   }

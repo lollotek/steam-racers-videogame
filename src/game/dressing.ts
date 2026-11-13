@@ -77,13 +77,13 @@ interface PropDef {
  * (gameplay.md §6.3, doc 03 §7.3). `mul` multiplies prop weights (`other` for the rest),
  * `density` thins every band.
  */
-interface Theme {
+export interface Theme {
   density: number;
   other: number;
   mul: Record<string, number>;
 }
 
-const THEMES: Record<Barricade, Theme> = {
+const THEMES: Partial<Record<Barricade, Theme>> = {
   // Riveted plates: the foundry itself — boilers, pipes, gears.
   riveted: { density: 1, other: 1, mul: { hedgehogs: 0, shack: 0, bunker: 0, rocks: 0, wireCoil: 0, wreck: 0.3 } },
   // Corrugated sheet: depots and shanty workshops.
@@ -97,6 +97,19 @@ const THEMES: Record<Barricade, Theme> = {
   // Barbed wire: no man's land.
   barbed: { density: 0.75, other: 0.12, mul: { wireCoil: 7, hedgehogs: 2.5, spikeFence: 3, rocks: 2, wreck: 1, scrapSmall: 1, sandbags: 1 } },
 };
+
+/** v2 barricades without a theme of their own borrow the closest v1 surroundings (biomes may override). */
+const THEME_FALLBACK: Record<Barricade, Barricade> = {
+  earth: 'earth', riveted: 'riveted', hedgehog: 'hedgehog', corrugated: 'corrugated', sandbags: 'sandbags', barbed: 'barbed',
+  stone: 'riveted', runepylon: 'riveted', ironrail: 'corrugated', wreckwall: 'hedgehog', tyres: 'hedgehog', roots: 'earth', crystal: 'earth',
+};
+
+export interface DressingOptions {
+  /** Ground height under a point (elevated tracks, doc 04 A5). Default: flat at 0. */
+  heightAt?: (x: number, z: number) => number;
+  /** Biome themes per barricade (override the defaults). */
+  themes?: Partial<Record<Barricade, Theme>>;
+}
 
 export interface DressingResult {
   emitters: EmitterOptions[];
@@ -173,7 +186,10 @@ export function buildDressing(
   reserved: Reserved[],
   /** Barricade type of the track edge nearest to a centre-line point, on its left or right side. */
   barricadeAt: (x: number, z: number, left: boolean) => Barricade = () => 'riveted',
+  opts: DressingOptions = {},
 ): DressingResult {
+  const heightAt = opts.heightAt ?? (() => 0);
+  const themeOf = (b: Barricade): Theme => opts.themes?.[b] ?? THEMES[b] ?? opts.themes?.[THEME_FALLBACK[b]] ?? THEMES[THEME_FALLBACK[b]]!;
   const rng = new Rng(seed * 7919 + 13);
   const { mats, g } = makeKit(tex);
 
@@ -379,7 +395,7 @@ export function buildDressing(
 
   const batches = new Map<string, { geo: BufferGeometry; mat: Material; list: Matrix4[]; shadow: boolean }>();
   const emitters: EmitterOptions[] = [];
-  const pools: { x: number; z: number; r: number; color: string }[] = [];
+  const pools: { x: number; y: number; z: number; r: number; color: string }[] = [];
   const length = curve.getLength();
   const up = new Vector3(0, 1, 0);
 
@@ -392,7 +408,7 @@ export function buildDressing(
       for (const side of [-1, 1]) {
         const p = curve.getPointAt(t);
         // The barricade on this side of the piece decides what is built behind it.
-        const theme = THEMES[barricadeAt(p.x, p.z, side > 0)];
+        const theme = themeOf(barricadeAt(p.x, p.z, side > 0));
         if (rng.next() > 0.85 * theme.density) continue; // leave gaps
         const weightOf = (d: PropDef) => d.weight * (theme.mul[d.name] ?? theme.other);
         let pick = rng.next() * candidates.reduce((s, d) => s + weightOf(d), 0);
@@ -405,7 +421,7 @@ export function buildDressing(
         if (!free(x, z, def.radius)) continue;
         placed.push({ x, z, r: def.radius });
         const yaw = bandName === 'edge' ? Math.atan2(left.x, left.z) + rng.range(-0.3, 0.3) : rng.range(0, Math.PI * 2);
-        const world = new Matrix4().compose(new Vector3(x, 0, z), new Quaternion().setFromAxisAngle(up, yaw), new Vector3(1, 1, 1));
+        const world = new Matrix4().compose(new Vector3(x, heightAt(x, z), z), new Quaternion().setFromAxisAngle(up, yaw), new Vector3(1, 1, 1));
         for (const part of def.build(rng)) {
           const key = `${part.geo.uuid}|${part.mat.uuid}`;
           let b = batches.get(key);
@@ -420,7 +436,7 @@ export function buildDressing(
           const w = e.local.clone().applyMatrix4(world);
           emitters.push({ ...e.opts, position: { x: w.x, y: w.y, z: w.z } });
         }
-        if (def.pool) pools.push({ x, z, r: def.pool[1], color: def.pool[0] });
+        if (def.pool) pools.push({ x, y: heightAt(x, z), z, r: def.pool[1], color: def.pool[0] });
       }
     }
   }
@@ -436,7 +452,7 @@ export function buildDressing(
     const x = p.x + left.x * off;
     const z = p.z + left.z * off;
     const s = rng.range(0.15, 0.6);
-    debris.push(M(x, 0.03, z, 0, rng.range(0, 6), 0, s, 1, s * rng.range(0.4, 1.2)));
+    debris.push(M(x, heightAt(x, z) + 0.03, z, 0, rng.range(0, 6), 0, s, 1, s * rng.range(0.4, 1.2)));
   }
   batches.set('debris', { geo: g.plate, mat: mats.debris, list: debris, shadow: false });
 
@@ -461,7 +477,7 @@ export function buildDressing(
     const geo = new PlaneGeometry(1, 1);
     geo.rotateX(-Math.PI / 2);
     const mesh = new InstancedMesh(geo, m, pools.length);
-    pools.forEach((p, i) => mesh.setMatrixAt(i, M(p.x, 0.07, p.z, 0, 0, 0, p.r * 2, 1, p.r * 2)));
+    pools.forEach((p, i) => mesh.setMatrixAt(i, M(p.x, p.y + 0.07, p.z, 0, 0, 0, p.r * 2, 1, p.r * 2)));
     mesh.renderOrder = 5;
     scene.add(mesh);
   }

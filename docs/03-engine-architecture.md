@@ -269,6 +269,8 @@ Each block GLB carries its visual mesh, a simplified **collision mesh** (`col_*`
 
 Optional per piece: `surface` (plate, grate, dirt, sand, oil, water → grip/drag, doc 03 §6.1) and `left`/`right` barricade (earth, riveted, hedgehog, corrugated, sandbags, barbed — gameplay.md §6.3).
 
+**v2 (M4, doc 04 §3 A2/A5, §9):** piece type `jump`; per piece `rise` (levels of `level` = 4 m), `crest` (m), `pickups`, `hazard`, `landmark`, `zone`; the surfaces and barricades of doc 04 §5. Samples carry `y`, `grade` and `feature` (road, kicker, gap, landing); the compiled track adds `pickups`, `hazards`, `landmarks`, `jumps`. The world is built by `world/build.ts` from the biome named in the file (`src/biomes`).
+
 The compiler (`src/track/compile.ts`, pure, runs in Node) validates closure, overlaps and the start piece, and produces 1 m centre-line samples (position, tangent, distance, curvature, surface, barricades), checkpoints, the spawn grid and bounds. The visual world (road ribbons per surface, barricades per type, start gantry) and the physics colliders are both generated from this data.
 
 **A6 (proposal):** cell = **20 m**, track width 14 m. A tight curve (size 1) has a 10 m radius — a real hairpin/chicane for these vehicles; size 2 and 3 are fast curves. At a 1:200 tabletop scale a cell is a 10 cm tile and a 5 m vehicle a 2.5 cm miniature. To be confirmed with the board game's tile size.
@@ -551,8 +553,9 @@ Realme RMX3370 (Snapdragon 870, Android 13, Chrome 157, WebGPU), Medium tier, 4 
 | **M1 — Look test** | `InkLit`, hatching (procedural TAM), outlines, bloom, LUT, fog, steam particles, one foundry track section, 2 placeholder vehicles (static/animated), camera | Doc 02 §16 acceptance criteria |
 | **M2 — Driving prototype** | Rapier, gear-based vehicle model, steam push, input (kbd/gamepad/touch), camera follow, block-format test track, progress, laps, headless runner | Fun to drive 3 laps alone on desktop and phone |
 | **M3 — Race vertical slice** | 4 racers (configurable up to 8) with AI, start test, boiler basics, hull/collisions, front cannon, race states, HUD, minimap, identity banners/runes, results, 2-player split screen on PC | Complete 3-lap race vs 3 AI at target FPS on both device classes |
+| **M4 — Grand Prix** | Cup of 4 races (Dwarven, Victorian, Orc, Elven worlds), biome system, track format v2 with ramps and jumps, pickups, signature hazards, front-end, season loop, workshop, difficulty — [doc 04](04-grand-prix.md) | Full Cup from title to trophy on PC (1–2 players) and phone at target FPS |
 
-After M3: Grand Prix and economy, garage/upgrades, modules, full arsenal, cards and race events, driving school, level editor (§7.3), more biomes, audio and menu polish.
+After M4: garage/upgrades, modules, full arsenal, cards and race events, driving school, level editor (§7.3), more biomes, audio and menu polish.
 
 ---
 

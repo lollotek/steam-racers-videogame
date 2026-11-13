@@ -14,7 +14,7 @@ import { type HullState, createHull, damage, edgeDamage, ram, scrapeDamage } fro
 import { type CannonState, type HitZone, coneHalfAngle, createCannon, isLocked, pickTarget, shotAngle, shotWobble, zoneDamage, zoneOf } from '../rules/cannon';
 import type { VehicleStats } from '../rules/stats';
 import type { BoilerOutcome, BoilerTestKind } from '../rules/boiler';
-import type { Barricade } from '../track/track-format';
+import type { Barricade, HazardKind, PickupKind } from '../track/track-format';
 import { freePush } from '../vehicles/gearbox';
 import type { PhysicsVehicle } from '../vehicles/vehicle-physics';
 import type { CompiledTrack } from '../track/compile';
@@ -30,6 +30,10 @@ export interface RacerRules {
   startOutcome: StartOutcome | null;
   /** Weapons unlocked (after `weapons.unlockLap` laps). */
   armed: boolean;
+  /** Cup money collected on the track this race (money bags, doc 04 A3). */
+  money: number;
+  /** Seconds of rune-pylon contact towards the next PV drain. */
+  pylonAcc: number;
 }
 
 export type RuleEvent =
@@ -37,7 +41,14 @@ export type RuleEvent =
   | { type: 'boilerTest'; racer: number; kind: BoilerTestKind }
   | { type: 'boiler'; racer: number; outcome: BoilerOutcome }
   | { type: 'vent'; racer: number; x: number; z: number }
-  | { type: 'damage'; racer: number; pf: number; source: 'edge' | 'scrape' | 'ram' | 'shot' | 'boiler' | 'shock' }
+  | { type: 'damage'; racer: number; pf: number; source: 'edge' | 'scrape' | 'ram' | 'shot' | 'boiler' | 'shock' | 'hazard' }
+  /** Rune pylon contact drained steam. */
+  | { type: 'pylon'; racer: number; x: number; z: number }
+  | { type: 'pickup'; racer: number; id: number; kind: PickupKind; amount: number; x: number; y: number; z: number }
+  /** Jump landing: clean (+PV) or hard (−1 gear). */
+  | { type: 'landing'; racer: number; clean: boolean; air: number; pv: number }
+  /** A hazard effect hit a racer (damage, crash, steam). */
+  | { type: 'hazard'; racer: number; id: number; kind: HazardKind; effect: 'damage' | 'crash' | 'steam'; amount: number }
   | { type: 'wreck'; racer: number }
   | { type: 'ram'; a: number; b: number; winner: number; x: number; z: number }
   | { type: 'armed'; racer: number }
@@ -82,6 +93,8 @@ export function createRacerRules(stats: VehicleStats, pole: boolean): RacerRules
     start: createStartTest(stats.man, stats.aff, pole),
     startOutcome: null,
     armed: tunables.get<number>('weapons.unlockLap') === 0,
+    money: 0,
+    pylonAcc: 0,
   };
 }
 
@@ -177,11 +190,27 @@ export class RaceRules {
   /** Edge events from the rail (gameplay.md §6.3). */
   edgeImpact(r: RulesRacer, type: Barricade, kind: 'hit' | 'crash', clock: number): void {
     this.hurt(r, edgeDamage(type, kind, r.rules.hull.rammedFor > 0), 'edge', clock);
+    if (type === 'runepylon') this.pylonDrain(r);
   }
 
   edgeContact(r: RulesRacer, type: Barricade, contact: boolean, dt: number, clock: number): void {
     const pf = scrapeDamage(r.rules.hull, type, contact, dt);
     if (pf > 0) this.hurt(r, pf, 'scrape', clock);
+    // Rune pylons (doc 04 §5): the arc field drains 1 PV on a hit and every few seconds of scraping.
+    if (contact && type === 'runepylon') {
+      r.rules.pylonAcc += dt;
+      if (r.rules.pylonAcc >= tunables.get<number>('barricades.runepylon.drainEvery')) {
+        r.rules.pylonAcc = 0;
+        this.pylonDrain(r);
+      }
+    } else r.rules.pylonAcc = 0;
+  }
+
+  private pylonDrain(r: RulesRacer): void {
+    const b = r.rules.boiler;
+    if (b.pv <= 0 || r.vehicle.wrecked) return;
+    b.pv = Math.max(0, b.pv - tunables.get<number>('barricades.runepylon.drain'));
+    this.events.push({ type: 'pylon', racer: r.index, x: r.vehicle.curr.x, z: r.vehicle.curr.z });
   }
 
   lapCompleted(r: RulesRacer): void {

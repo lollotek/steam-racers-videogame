@@ -1,0 +1,30 @@
+{
+  "id": "proving-ground",
+  "name": "Steam Council Proving Ground",
+  "biome": "foundry",
+  "cell": 20,
+  "width": 14,
+  "laps": 3,
+  "level": 4,
+  "defaultSurface": "plate",
+  "defaultBarricade": "riveted",
+  "pieces": [
+    { "type": "start", "size": 3, "pickups": [{ "kind": "coal", "at": 0.2, "lane": -0.6 }] },
+    { "type": "straight", "size": 2, "rise": 1, "surface": "flagstone", "left": "stone", "right": "runepylon" },
+    { "type": "straight", "size": 1, "surface": "flagstone", "left": "stone", "right": "runepylon", "landmark": { "id": "rune-engine", "side": "L", "offset": 22, "radius": 14 } },
+    { "type": "jump", "size": 2, "rise": -1, "surface": "scrap", "left": "wreckwall", "right": "wreckwall" },
+    { "type": "curve", "size": 2, "turn": "R", "surface": "cobble", "left": "ironrail", "right": "tyres" },
+    { "type": "straight", "size": 2, "crest": 2.5, "surface": "cobble", "left": "ironrail", "right": "ironrail",
+      "pickups": [{ "kind": "money", "at": 0.5, "lane": 0.6 }, { "kind": "money", "at": 0.5, "lane": -0.6 }] },
+    { "type": "straight", "size": 2, "surface": "rails", "left": "corrugated", "right": "corrugated", "hazard": { "kind": "crossing", "at": 0.5 } },
+    { "type": "curve", "size": 2, "turn": "R", "surface": "heartwood", "left": "crystal", "right": "roots" },
+    { "type": "straight", "size": 3, "surface": "heartwood", "left": "roots", "right": "crystal",
+      "hazard": { "kind": "stream", "at": 0.5, "length": 40 }, "pickups": [{ "kind": "coal", "at": 0.85, "lane": 0.5 }] },
+    { "type": "jump", "size": 2, "surface": "sand", "left": "tyres", "right": "tyres" },
+    { "type": "straight", "size": 1, "surface": "grate", "left": "stone", "right": "stone", "hazard": { "kind": "vent", "at": 0.5 } },
+    { "type": "straight", "size": 2, "surface": "mud", "left": "earth", "right": "sandbags", "pickups": [{ "kind": "money", "at": 0.6 }] },
+    { "type": "curve", "size": 2, "turn": "R", "surface": "moss", "left": "roots", "right": "earth" },
+    { "type": "straight", "size": 4, "surface": "scrap", "left": "wreckwall", "right": "hedgehog", "hazard": { "kind": "crane", "at": 0.55 } },
+    { "type": "curve", "size": 2, "turn": "R", "left": "barbed", "right": "riveted" }
+  ]
+}

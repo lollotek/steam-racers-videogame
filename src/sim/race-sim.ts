@@ -14,6 +14,8 @@ import { barricadeParams, classifyImpact, speedAfterHit } from '../race/barricad
 import type { Barricade } from '../track/track-format';
 import { RaceRules, createRacerRules, type RacerRules, type RuleEvent } from './race-rules';
 import { type StatsId, vehicleStats } from '../rules/stats';
+import { TrackFeatures } from './track-features';
+import { JUMP } from '../track/track-format';
 
 export const SIM_STEP = 1 / 60;
 
@@ -51,6 +53,8 @@ export interface Racer {
   /** Horizontal velocity before the physics step (impact detection). */
   preVx: number;
   preVz: number;
+  /** Vertical velocity before the physics step (landings). */
+  preVy: number;
   /** Rules state: boiler, hull, cannon, start test (sim/race-rules.ts). */
   rules: RacerRules;
   /** Crossed the line: no more damage. */
@@ -115,6 +119,8 @@ export class RaceSim {
   steps = 0;
   readonly events: SimEvent[] = [];
   readonly rules: RaceRules;
+  /** Pickups, hazard zones, jump landings (doc 04 §3 A3–A5). */
+  readonly features: TrackFeatures;
   private idle = emptyFrame();
 
   constructor(file: TrackFile, racers: RacerConfig[], seed = 1) {
@@ -129,9 +135,10 @@ export class RaceSim {
       const rules = createRacerRules(stats, i === 0);
       const vehicle = new PhysicsVehicle(RAPIER, this.world, cfg.spec, slot, rules.boiler);
       const edge: EdgeState = { contact: false, side: 1, barricade: file.defaultBarricade, time: 0, tick: 0, away: 99, slide: 0, x: 0, z: 0, nx: 0, nz: 0 };
-      this.racers.push({ index: i, name: cfg.name, vehicle, progress: createProgress(this.track, slot.x, slot.z), outOfBounds: 0, edge, preVx: 0, preVz: 0, rules, finished: false });
+      this.racers.push({ index: i, name: cfg.name, vehicle, progress: createProgress(this.track, slot.x, slot.z), outOfBounds: 0, edge, preVx: 0, preVz: 0, preVy: 0, rules, finished: false });
     });
     this.rules = new RaceRules(seed, this.racers, this.world, this.track);
+    this.features = new TrackFeatures(this.track, this.racers, this.rules, RAPIER, this.world);
   }
 
   /**
@@ -140,14 +147,35 @@ export class RaceSim {
    * (gameplay.md §6.3: barricades never break).
    */
   private buildStatic(): void {
-    const ground = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(0, -1, 0));
-    this.world.createCollider(RAPIER.ColliderDesc.cuboid(600, 1, 600).setCollisionGroups(GROUND_GROUPS).setFriction(0.9), ground);
+    // Road: one trimesh following the centre line heights (doc 04 A5), wider than the rail limit.
+    // Jump gaps have no road: a car that falls short drops into the pit and is repositioned.
+    const smp = this.track.samples;
+    const n0 = smp.length;
+    const half = this.track.halfWidth + 4;
+    const verts = new Float32Array(n0 * 6);
+    smp.forEach((p, i) => {
+      verts.set([p.x + p.tz * half, p.y, p.z - p.tx * half, p.x - p.tz * half, p.y, p.z + p.tx * half], i * 6);
+    });
+    const idx: number[] = [];
+    for (let i = 0; i < n0; i++) {
+      const j = (i + 1) % n0;
+      if (smp[i]!.feature === 'gap' || smp[j]!.feature === 'gap') continue;
+      const a = i * 2;
+      const b = j * 2;
+      idx.push(a, b, a + 1, a + 1, b, b + 1);
+    }
+    const road = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
+    this.world.createCollider(RAPIER.ColliderDesc.trimesh(verts, new Uint32Array(idx)).setCollisionGroups(GROUND_GROUPS).setFriction(0.9), road);
+    // Catch floor far below everything (safety only: falls are repositioned long before).
+    const floor = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(0, this.track.bounds.minY - 31, 0));
+    this.world.createCollider(RAPIER.ColliderDesc.cuboid(800, 1, 800).setCollisionGroups(GROUND_GROUPS).setFriction(0.9), floor);
     const step = 4;
     const n = Math.floor(this.track.length / step);
     const walls = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed());
     const off = this.track.halfWidth + 2.6;
     for (let i = 0; i < n; i++) {
       const sp = sampleAt(this.track, i * step + step / 2);
+      if (sp.feature === 'gap') continue;
       const h = Math.atan2(sp.tx, sp.tz);
       for (const side of [-1, 1]) {
         // Driver's right of the tangent: (-tz, tx).
@@ -155,7 +183,7 @@ export class RaceSim {
         const z = sp.z + sp.tx * off * side;
         // Taller than the visible barricade: a car must never be launched out of the circuit.
         const desc = RAPIER.ColliderDesc.cuboid(0.3, 3.0, step / 2 + 0.25)
-          .setTranslation(x, 2.9, z)
+          .setTranslation(x, sp.y + 2.9, z)
           .setRotation({ x: 0, y: Math.sin(h / 2), z: 0, w: Math.cos(h / 2) })
           .setCollisionGroups(WALL_GROUPS)
           .setFriction(tunables.get('race.wallFriction'))
@@ -194,6 +222,7 @@ export class RaceSim {
       const v = r.vehicle.body.linvel();
       r.preVx = v.x;
       r.preVz = v.z;
+      r.preVy = v.y;
     }
     this.world.step();
     this.steps++;
@@ -225,9 +254,12 @@ export class RaceSim {
       this.applyRail(r, dt);
       this.rules.edgeContact(r, r.edge.barricade, r.edge.contact, dt, this.clock);
       r.outOfBounds = Math.abs(r.progress.lateral) > this.track.halfWidth + 2 ? r.outOfBounds + dt : 0;
-      const stuck = r.vehicle.troubleTime > tunables.get('race.autoReposition') || p.y < -5 || r.outOfBounds > 1;
-      if (stuck && (!r.vehicle.wrecked || p.y < -5)) this.reposition(r);
+      // Fell off (short jump, pit): below the road line at the current progress.
+      const fell = p.y < this.track.samples[r.progress.index]!.y - JUMP.fallDepth;
+      const stuck = r.vehicle.troubleTime > tunables.get('race.autoReposition') || fell || r.outOfBounds > 1;
+      if (stuck && (!r.vehicle.wrecked || fell)) this.reposition(r);
     }
+    this.features.step(dt, this.clock, running);
     this.rules.postStep(dt, this.clock);
     if (this.phase === 'running' && this.racers.every((r) => r.finished || r.vehicle.wrecked)) this.phase = 'finished';
   }
@@ -331,8 +363,14 @@ export class RaceSim {
 
   /** Back on the centre line at the current progress, facing along the track (gameplay.md §5.1). */
   reposition(r: Racer): void {
-    const smp = this.track.samples[r.progress.index]!;
-    r.vehicle.teleport(smp.x, smp.z, Math.atan2(smp.tx, smp.tz));
+    // Never in a jump gap or on its ramps: after the landing, where the road is level again.
+    const n = this.track.samples.length;
+    let i = r.progress.index;
+    for (let k = 0; k < n && this.track.samples[i]!.feature !== 'road'; k++) i = (i + 1) % n;
+    const smp = this.track.samples[i]!;
+    r.vehicle.teleport(smp.x, smp.z, Math.atan2(smp.tx, smp.tz), smp.y);
+    // Progress search starts from the new place (the distance gained is counted on the next step).
+    r.progress.index = i;
     r.outOfBounds = 0;
     r.edge.contact = false;
     r.edge.time = r.edge.tick = 0;
