@@ -7,10 +7,11 @@ test.describe('keyboard (PC)', () => {
   test.skip(({ isMobile }) => isMobile, 'PC only');
 
   test('P1 arrows: steam push shifts up, gear down shifts down, steer turns', async ({ page }) => {
-    await boot(page);
+    await boot(page, 'tier=low');
     await page.keyboard.press('ArrowUp');
     await expect.poll(() => gear(page)).toBe(2);
-    await page.waitForTimeout(1100); // push cooldown
+    // Wait for the push cooldown in simulated time (the sim slows down when the page is starved).
+    await expect.poll(async () => (await snapshot(page)).players[0]!.pushCooldown).toBe(0);
     await page.keyboard.press('ArrowUp');
     await expect.poll(() => gear(page)).toBe(3);
     await page.keyboard.press('ArrowDown');
@@ -25,7 +26,7 @@ test.describe('keyboard (PC)', () => {
   });
 
   test('Escape pauses and resumes', async ({ page }) => {
-    await boot(page);
+    await boot(page, 'tier=low');
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('pause-overlay')).toBeVisible();
     const s1 = (await snapshot(page)).simSteps;
@@ -36,7 +37,7 @@ test.describe('keyboard (PC)', () => {
   });
 
   test('split screen: WASD drives P2, arrows drive P1', async ({ page }) => {
-    await boot(page, 'players=2');
+    await boot(page, 'players=2&tier=low');
     await page.keyboard.press('KeyW');
     await expect.poll(() => gear(page, 1)).toBe(2);
     expect(await gear(page, 0)).toBe(1);
@@ -56,7 +57,7 @@ test.describe('gamepad (PC)', () => {
       (window as unknown as { __pad: typeof pad }).__pad = pad;
       Object.defineProperty(navigator, 'getGamepads', { value: () => [pad, null, null, null] });
     });
-    await boot(page);
+    await boot(page, 'tier=low');
     await page.evaluate(() => {
       const w = window as unknown as { __pad: { buttons: { pressed: boolean; value: number }[] } };
       w.__pad.buttons[0] = { pressed: true, value: 1 };
@@ -74,7 +75,7 @@ test.describe('touch (mobile)', () => {
   test.skip(({ isMobile }) => !isMobile, 'mobile only');
 
   test('touch controls are shown and drive the vehicle', async ({ page }) => {
-    await boot(page);
+    await boot(page, 'tier=low');
     await expect(page.getByTestId('touch-controls')).toBeVisible();
 
     await page.getByTestId('touch-steamPush').tap();
@@ -86,7 +87,7 @@ test.describe('touch (mobile)', () => {
   });
 
   test('steering pad drag steers right', async ({ page }) => {
-    await boot(page);
+    await boot(page, 'tier=low');
     const pad = page.getByTestId('touch-steer');
     const box = (await pad.boundingBox())!;
     const x = box.x + box.width / 2;

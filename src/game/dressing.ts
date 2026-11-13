@@ -1,0 +1,380 @@
+/**
+ * Seeded set-dressing generator (doc 03 §7.3 "generated surroundings", first version).
+ * Fills bands around the track with props from a small kit, then batches every
+ * (geometry, material) pair into one InstancedMesh so the draw-call count stays low.
+ *
+ *   edge  band: right behind the barriers — barrels, crates, tyres, sandbags, braziers, scrap
+ *   mid   band: machinery — boilers, generators, pipe clusters, scrap piles, big gears
+ *   far   band: silhouettes — storage tanks, chimneys (smoke), girder towers
+ */
+import {
+  AdditiveBlending,
+  BoxGeometry,
+  Color,
+  CylinderGeometry,
+  Euler,
+  InstancedMesh,
+  Matrix4,
+  MeshBasicNodeMaterial,
+  PlaneGeometry,
+  Quaternion,
+  SphereGeometry,
+  TorusGeometry,
+  Vector3,
+  type BufferGeometry,
+  type CatmullRomCurve3,
+  type Material,
+  type Scene,
+} from 'three/webgpu';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { float, smoothstep, uv, vec4 } from 'three/tsl';
+import { Rng } from '../core/rng';
+import { tunables } from '../core/tunables';
+import { InkLitMaterial } from '../render/ink/ink-material';
+import type { ProceduralSet } from '../render/procedural/textures';
+import type { EmitterOptions } from '../render/fx/particles';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type N = any;
+
+tunables.registerGroup('dressing', [
+  { key: 'dressing.edgeDensity', type: 'number', default: 1, min: 0, max: 3, step: 0.05, label: 'Edge band density (reload)' },
+  { key: 'dressing.midDensity', type: 'number', default: 1, min: 0, max: 3, step: 0.05, label: 'Mid band density (reload)' },
+  { key: 'dressing.farDensity', type: 'number', default: 1, min: 0, max: 3, step: 0.05, label: 'Far band density (reload)' },
+  { key: 'dressing.debris', type: 'number', default: 1800, min: 0, max: 8000, step: 100, label: 'Ground debris count (reload)' },
+]);
+
+export interface Reserved {
+  x: number;
+  z: number;
+  r: number;
+}
+
+interface Part {
+  geo: BufferGeometry;
+  mat: Material;
+  m: Matrix4;
+  shadow?: boolean;
+}
+
+type Band = 'edge' | 'mid' | 'far';
+
+interface PropDef {
+  name: string;
+  radius: number;
+  bands: Band[];
+  weight: number;
+  build(rng: Rng): Part[];
+  /** Optional smoke/steam emitter at a local point. */
+  emitter?: (rng: Rng) => { local: Vector3; opts: Omit<EmitterOptions, 'position'> };
+  /** Additive glow pool (color, radius). */
+  pool?: [string, number];
+}
+
+export interface DressingResult {
+  emitters: EmitterOptions[];
+  instancedMeshes: number;
+  instances: number;
+}
+
+const M = (x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, sx = 1, sy = sx, sz = sx) =>
+  new Matrix4().compose(new Vector3(x, y, z), new Quaternion().setFromEuler(new Euler(rx, ry, rz)), new Vector3(sx, sy, sz));
+
+function gearGeometry(radius: number, teeth: number, thickness: number): BufferGeometry {
+  const parts: BufferGeometry[] = [new CylinderGeometry(radius, radius, thickness, 24)];
+  const tooth = new BoxGeometry(radius * 0.28, thickness, radius * 0.3);
+  for (let i = 0; i < teeth; i++) {
+    const a = (i / teeth) * Math.PI * 2;
+    const g = tooth.clone();
+    g.rotateY(-a);
+    g.translate(Math.cos(a) * radius * 1.08, 0, Math.sin(a) * radius * 1.08);
+    parts.push(g);
+  }
+  const hub = new CylinderGeometry(radius * 0.25, radius * 0.25, thickness * 1.6, 12);
+  parts.push(hub);
+  return mergeGeometries(parts.map((p) => p.toNonIndexed()))!;
+}
+
+function makeKit(tex: ProceduralSet) {
+  const ink = (p: ConstructorParameters<typeof InkLitMaterial>[0]) => new InkLitMaterial(p);
+  const mats = {
+    rust: ink({ map: tex.rust, mapping: 'world', mapScale: 0.3 }),
+    iron: ink({ map: tex.iron, mapping: 'world', mapScale: 0.3 }),
+    ironLight: ink({ map: tex.iron, mapping: 'world', mapScale: 0.3, color: new Color(1.6, 1.5, 1.45) }),
+    brass: ink({ map: tex.brass, mapping: 'world', mapScale: 0.6, sheen: 0.8 }),
+    wood: ink({ map: tex.rust, mapping: 'world', mapScale: 0.4, color: '#B89A70' }),
+    grate: ink({ map: tex.grate, mapping: 'world', mapScale: 0.5 }),
+    rubber: ink({ color: '#2E2826' }),
+    sand: ink({ map: tex.dirt, mapping: 'world', mapScale: 0.5, color: '#D8C8A8' }),
+    dark: ink({ color: '#3A3330' }),
+    debris: ink({ color: '#6E655E', lineWeight: 0 }),
+    fire: ink({ color: '#000000', emissive: '#FF8A2A', emissiveIntensity: 6, emissivePreset: 'fire', hatch: false, lineWeight: 0.3 }),
+    neonCyan: ink({ color: '#000000', emissive: '#3FE0FF', emissiveIntensity: 3.5, emissivePreset: 'neon', hatch: false, phase: 2.2 }),
+    neonMagenta: ink({ color: '#000000', emissive: '#FF3FB4', emissiveIntensity: 3.5, emissivePreset: 'neon', hatch: false, phase: 5.7 }),
+  };
+  const g = {
+    barrel: new CylinderGeometry(0.6, 0.6, 1.4, 12),
+    hoop: new CylinderGeometry(0.64, 0.64, 0.12, 12),
+    box: new BoxGeometry(1, 1, 1),
+    cyl: new CylinderGeometry(1, 1, 1, 14),
+    cylLow: new CylinderGeometry(1, 1, 1, 8),
+    sphere: new SphereGeometry(1, 12, 8),
+    tyre: (() => {
+      const t = new TorusGeometry(0.55, 0.25, 8, 14);
+      t.rotateX(Math.PI / 2);
+      return t;
+    })(),
+    cone: new CylinderGeometry(0, 1, 1, 6),
+    gear: gearGeometry(1, 12, 0.35),
+    bag: (() => {
+      const s = new SphereGeometry(0.5, 10, 6);
+      s.scale(1.1, 0.45, 0.65);
+      return s;
+    })(),
+    flame: new CylinderGeometry(0, 0.5, 1.1, 7),
+    plate: new BoxGeometry(1, 0.06, 1),
+  };
+  return { mats, g };
+}
+
+export function buildDressing(
+  scene: Scene,
+  curve: CatmullRomCurve3,
+  halfWidth: number,
+  tex: ProceduralSet,
+  seed: number,
+  reserved: Reserved[],
+): DressingResult {
+  const rng = new Rng(seed * 7919 + 13);
+  const { mats, g } = makeKit(tex);
+
+  const props: PropDef[] = [
+    // ---- edge band -----------------------------------------------------------
+    { name: 'barrel', radius: 0.8, bands: ['edge', 'mid'], weight: 5, build: (r) => [
+      { geo: g.barrel, mat: r.next() > 0.5 ? mats.rust : mats.iron, m: M(0, 0.7, 0) },
+      { geo: g.hoop, mat: mats.brass, m: M(0, 0.35, 0) },
+      { geo: g.hoop, mat: mats.brass, m: M(0, 1.05, 0) },
+    ] },
+    { name: 'barrelTipped', radius: 1.0, bands: ['edge'], weight: 2, build: () => [{ geo: g.barrel, mat: mats.rust, m: M(0, 0.6, 0, 0, 0, Math.PI / 2) }] },
+    { name: 'crates', radius: 1.6, bands: ['edge', 'mid'], weight: 4, build: (r) => {
+      const parts: Part[] = [];
+      const n = r.int(1, 4);
+      for (let i = 0; i < n; i++) {
+        const s = r.range(0.9, 1.5);
+        parts.push({ geo: g.box, mat: mats.wood, m: M(r.range(-0.8, 0.8), s / 2 + (i > 1 ? 1.3 : 0), r.range(-0.8, 0.8), 0, r.range(-0.4, 0.4), 0, s) });
+      }
+      return parts;
+    } },
+    { name: 'tyres', radius: 1.0, bands: ['edge'], weight: 3, build: (r) => {
+      const n = r.int(2, 5);
+      return Array.from({ length: n }, (_, k) => ({ geo: g.tyre, mat: mats.rubber, m: M(r.range(-0.1, 0.1), 0.25 + k * 0.48, r.range(-0.1, 0.1)) }));
+    } },
+    { name: 'sandbags', radius: 2.2, bands: ['edge'], weight: 2, build: (r) => {
+      const parts: Part[] = [];
+      for (let row = 0; row < 3; row++)
+        for (let i = 0; i < 4 - row; i++)
+          parts.push({ geo: g.bag, mat: mats.sand, m: M(-1.6 + i * 1.05 + row * 0.5, 0.22 + row * 0.42, r.range(-0.05, 0.05), 0, r.range(-0.15, 0.15), 0) });
+      return parts;
+    } },
+    { name: 'brazier', radius: 1.0, bands: ['edge', 'mid'], weight: 2, pool: ['#FF8A2A', 7], build: () => [
+      { geo: g.cylLow, mat: mats.iron, m: M(0, 0.9, 0, 0, 0, 0, 0.7, 0.5, 0.7) },
+      { geo: g.cylLow, mat: mats.dark, m: M(0, 0.4, 0, 0, 0, 0, 0.18, 0.8, 0.18) },
+      { geo: g.flame, mat: mats.fire, m: M(0, 1.6, 0, 0, 0, 0, 1.1, 1, 1.1), shadow: false },
+    ] },
+    { name: 'scrapSmall', radius: 1.4, bands: ['edge', 'mid'], weight: 3, build: (r) => scrap(r, 4, 1.2) },
+    { name: 'spikeFence', radius: 2.4, bands: ['edge'], weight: 2, build: (r) => {
+      const parts: Part[] = [];
+      for (let i = 0; i < 5; i++) {
+        const x = -2 + i;
+        parts.push({ geo: g.box, mat: mats.wood, m: M(x, 1, 0, 0, 0, r.range(-0.08, 0.08), 0.22, 2, 0.22) });
+        parts.push({ geo: g.cone, mat: mats.ironLight, m: M(x, 2.3, 0, 0, 0, 0, 0.12, 0.6, 0.12) });
+      }
+      parts.push({ geo: g.box, mat: mats.wood, m: M(0, 1.3, 0.12, 0, 0, 0, 4.6, 0.18, 0.1) });
+      parts.push({ geo: g.box, mat: mats.wood, m: M(0, 0.6, 0.12, 0, 0, 0, 4.6, 0.18, 0.1) });
+      return parts;
+    } },
+    // ---- mid band -------------------------------------------------------------
+    { name: 'boiler', radius: 3.2, bands: ['mid'], weight: 3, emitter: (r) => ({ local: new Vector3(1.2, 4.6, 0), opts: { kind: r.next() > 0.5 ? 'steam' : 'smoke', rate: 3, velocity: { x: 0, y: 2.6, z: 0 }, spread: 0.6, life: [2, 3.5], size: [1, 4] } }), build: () => [
+      { geo: g.cyl, mat: mats.iron, m: M(0, 1.6, 0, 0, 0, Math.PI / 2, 1.3, 4, 1.3) },
+      { geo: g.cyl, mat: mats.brass, m: M(-1.2, 1.6, 0, 0, 0, Math.PI / 2, 1.36, 0.2, 1.36) },
+      { geo: g.cyl, mat: mats.brass, m: M(1.2, 1.6, 0, 0, 0, Math.PI / 2, 1.36, 0.2, 1.36) },
+      { geo: g.cyl, mat: mats.rust, m: M(1.2, 3.5, 0, 0, 0, 0, 0.32, 2.2, 0.32) },
+      { geo: g.sphere, mat: mats.brass, m: M(-1.5, 3.1, 0.4, 0, 0, 0, 0.4) },
+      { geo: g.box, mat: mats.dark, m: M(0, 0.25, 0, 0, 0, 0, 4.4, 0.5, 2.4) },
+    ] },
+    { name: 'generator', radius: 2.6, bands: ['mid'], weight: 2, build: (r) => [
+      { geo: g.box, mat: mats.rust, m: M(0, 1.3, 0, 0, 0, 0, 3.2, 2.6, 2.2) },
+      { geo: g.box, mat: mats.grate, m: M(0, 1.4, 1.12, 0, 0, 0, 2.4, 1.6, 0.05) },
+      { geo: g.cyl, mat: mats.iron, m: M(1.9, 2.0, 0, Math.PI / 2, 0, 0, 0.5, 2.6, 0.5) },
+      { geo: g.gear, mat: mats.brass, m: M(-1.62, 1.6, 0, 0, 0, Math.PI / 2, 0.9) },
+      { geo: g.cyl, mat: r.next() > 0.5 ? mats.neonCyan : mats.neonMagenta, m: M(0, 2.75, 0.8, 0, 0, Math.PI / 2, 0.08, 2.4, 0.08), shadow: false },
+    ] },
+    { name: 'pipes', radius: 3.5, bands: ['mid'], weight: 2, build: (r) => {
+      const parts: Part[] = [];
+      const h = r.range(1.5, 3.5);
+      for (let i = 0; i < 3; i++) {
+        parts.push({ geo: g.cyl, mat: i === 1 ? mats.brass : mats.rust, m: M(0, h + i * 0.9, 0, 0, 0, Math.PI / 2, 0.35, 7, 0.35) });
+        for (const x of [-3, 3]) parts.push({ geo: g.cyl, mat: mats.dark, m: M(x, h + i * 0.9, 0, 0, 0, Math.PI / 2, 0.45, 0.25, 0.45) });
+      }
+      for (const x of [-2.6, 2.6]) parts.push({ geo: g.box, mat: mats.iron, m: M(x, (h + 2) / 2, 0, 0, 0, 0, 0.35, h + 2, 0.35) });
+      return parts;
+    } },
+    { name: 'scrapPile', radius: 3.0, bands: ['mid', 'far'], weight: 3, build: (r) => scrap(r, 12, 2.6) },
+    { name: 'bigGear', radius: 2.6, bands: ['mid'], weight: 2, build: (r) => [
+      { geo: g.gear, mat: r.next() > 0.5 ? mats.rust : mats.brass, m: M(0, 2.0, 0, Math.PI / 2 - 0.35, 0, 0, 2.2) },
+      { geo: g.box, mat: mats.dark, m: M(0, 0.4, 0.6, 0, 0, 0, 1.2, 0.8, 0.8) },
+    ] },
+    // ---- far band -------------------------------------------------------------
+    { name: 'tank', radius: 6, bands: ['far'], weight: 3, build: (r) => {
+      const h = r.range(7, 12);
+      return [
+        { geo: g.cyl, mat: mats.iron, m: M(0, h / 2, 0, 0, 0, 0, 5, h, 5) },
+        { geo: g.sphere, mat: mats.rust, m: M(0, h, 0, 0, 0, 0, 5, 1.6, 5) },
+        { geo: g.cyl, mat: mats.brass, m: M(0, h * 0.3, 0, 0, 0, 0, 5.15, 0.4, 5.15) },
+        { geo: g.cyl, mat: mats.brass, m: M(0, h * 0.7, 0, 0, 0, 0, 5.15, 0.4, 5.15) },
+        { geo: g.box, mat: mats.dark, m: M(0, h / 2, 5.05, 0, 0, 0, 0.6, h, 0.2) },
+      ];
+    } },
+    { name: 'chimney', radius: 3, bands: ['far'], weight: 2, emitter: () => ({ local: new Vector3(0, 27, 0), opts: { kind: 'smoke', rate: 4, velocity: { x: 0, y: 3, z: 0 }, spread: 0.9, life: [4, 7], size: [3, 10] } }), build: () => [
+      { geo: g.cyl, mat: mats.rust, m: M(0, 13, 0, 0, 0, 0, 1.8, 26, 1.8) },
+      { geo: g.cyl, mat: mats.dark, m: M(0, 26.2, 0, 0, 0, 0, 2.1, 0.8, 2.1) },
+      { geo: g.box, mat: mats.iron, m: M(0, 1.5, 0, 0, 0, 0, 5, 3, 5) },
+    ] },
+    { name: 'tower', radius: 4, bands: ['far'], weight: 2, build: (r) => {
+      const h = r.range(12, 20);
+      const parts: Part[] = [];
+      for (const [x, z] of [[-2, -2], [2, -2], [-2, 2], [2, 2]]) parts.push({ geo: g.box, mat: mats.iron, m: M(x, h / 2, z, 0, 0, 0, 0.4, h, 0.4) });
+      for (let y = 3; y < h; y += 4) {
+        parts.push({ geo: g.box, mat: mats.rust, m: M(0, y, -2, 0, 0, 0, 4.4, 0.3, 0.3) });
+        parts.push({ geo: g.box, mat: mats.rust, m: M(0, y, 2, 0, 0, 0, 4.4, 0.3, 0.3) });
+        parts.push({ geo: g.box, mat: mats.rust, m: M(-2, y, 0, 0, Math.PI / 2, 0, 4.4, 0.3, 0.3) });
+        parts.push({ geo: g.box, mat: mats.rust, m: M(2, y, 0, 0, Math.PI / 2, 0, 4.4, 0.3, 0.3) });
+      }
+      parts.push({ geo: g.box, mat: mats.iron, m: M(0, h, 0, 0, 0, 0, 5, 1.6, 5) });
+      parts.push({ geo: g.cyl, mat: mats.neonCyan, m: M(0, h + 0.3, 2.55, 0, 0, Math.PI / 2, 0.1, 4, 0.1), shadow: false });
+      return parts;
+    } },
+  ];
+
+  function scrap(r: Rng, n: number, spread: number): Part[] {
+    const parts: Part[] = [];
+    const choices = [mats.rust, mats.iron, mats.ironLight, mats.dark];
+    for (let i = 0; i < n; i++) {
+      const geo = r.pick([g.box, g.cyl, g.box, g.plate]);
+      const s = r.range(0.4, 1.4);
+      parts.push({
+        geo,
+        mat: r.pick(choices),
+        m: M(r.range(-spread, spread) * 0.6, r.range(0.2, 0.3 + spread * 0.3), r.range(-spread, spread) * 0.6, r.range(-1, 1), r.range(0, 6), r.range(-1, 1), s, s * r.range(0.3, 1), s * r.range(0.5, 1.5)),
+      });
+    }
+    return parts;
+  }
+
+  // --- Track proximity: sampled centre line. --------------------------------------
+  const samples: Vector3[] = [];
+  const SAMPLES = 700;
+  for (let i = 0; i < SAMPLES; i++) samples.push(curve.getPointAt(i / SAMPLES));
+  const distToTrack = (x: number, z: number) => {
+    let d = Infinity;
+    for (const p of samples) d = Math.min(d, (p.x - x) ** 2 + (p.z - z) ** 2);
+    return Math.sqrt(d);
+  };
+  const placed: Reserved[] = [...reserved];
+  const free = (x: number, z: number, r: number) => placed.every((o) => (o.x - x) ** 2 + (o.z - z) ** 2 > (o.r + r) ** 2);
+
+  const bands: Record<Band, { min: number; max: number; step: number; density: number }> = {
+    edge: { min: halfWidth + 1.8, max: halfWidth + 4.5, step: 3.2, density: tunables.get('dressing.edgeDensity') },
+    mid: { min: halfWidth + 6, max: halfWidth + 18, step: 5.5, density: tunables.get('dressing.midDensity') },
+    far: { min: halfWidth + 22, max: halfWidth + 55, step: 11, density: tunables.get('dressing.farDensity') },
+  };
+
+  const batches = new Map<string, { geo: BufferGeometry; mat: Material; list: Matrix4[]; shadow: boolean }>();
+  const emitters: EmitterOptions[] = [];
+  const pools: { x: number; z: number; r: number; color: string }[] = [];
+  const length = curve.getLength();
+  const up = new Vector3(0, 1, 0);
+
+  for (const bandName of ['far', 'mid', 'edge'] as Band[]) {
+    const band = bands[bandName];
+    const candidates = props.filter((p) => p.bands.includes(bandName));
+    const total = candidates.reduce((s, p) => s + p.weight, 0);
+    const count = Math.floor((length / band.step) * band.density);
+    for (let i = 0; i < count; i++) {
+      const t = (i + rng.next()) / count;
+      for (const side of [-1, 1]) {
+        if (rng.next() > 0.85) continue; // leave gaps
+        let pick = rng.next() * total;
+        const def = candidates.find((p) => (pick -= p.weight) < 0) ?? candidates[0]!;
+        const p = curve.getPointAt(t);
+        const left = new Vector3().crossVectors(up, curve.getTangentAt(t)).normalize();
+        const off = side * rng.range(band.min + def.radius, band.max);
+        const x = p.x + left.x * off;
+        const z = p.z + left.z * off;
+        if (distToTrack(x, z) < halfWidth + 1.2 + def.radius) continue; // never on the road (curves fold the bands)
+        if (!free(x, z, def.radius)) continue;
+        placed.push({ x, z, r: def.radius });
+        const yaw = bandName === 'edge' ? Math.atan2(left.x, left.z) + rng.range(-0.3, 0.3) : rng.range(0, Math.PI * 2);
+        const world = new Matrix4().compose(new Vector3(x, 0, z), new Quaternion().setFromAxisAngle(up, yaw), new Vector3(1, 1, 1));
+        for (const part of def.build(rng)) {
+          const key = `${part.geo.uuid}|${part.mat.uuid}`;
+          let b = batches.get(key);
+          if (!b) {
+            b = { geo: part.geo, mat: part.mat, list: [], shadow: part.shadow !== false };
+            batches.set(key, b);
+          }
+          b.list.push(world.clone().multiply(part.m));
+        }
+        if (def.emitter) {
+          const e = def.emitter(rng);
+          const w = e.local.clone().applyMatrix4(world);
+          emitters.push({ ...e.opts, position: { x: w.x, y: w.y, z: w.z } });
+        }
+        if (def.pool) pools.push({ x, z, r: def.pool[1], color: def.pool[0] });
+      }
+    }
+  }
+
+  // Ground debris: small plates and bolts scattered near the track (instanced, no outlines).
+  const debrisCount = tunables.get('dressing.debris');
+  const debris: Matrix4[] = [];
+  for (let i = 0; i < debrisCount; i++) {
+    const t = rng.next();
+    const p = curve.getPointAt(t);
+    const left = new Vector3().crossVectors(up, curve.getTangentAt(t)).normalize();
+    const off = (rng.next() > 0.5 ? 1 : -1) * rng.range(halfWidth + 1.2, halfWidth + 24);
+    const x = p.x + left.x * off;
+    const z = p.z + left.z * off;
+    const s = rng.range(0.15, 0.6);
+    debris.push(M(x, 0.03, z, 0, rng.range(0, 6), 0, s, 1, s * rng.range(0.4, 1.2)));
+  }
+  batches.set('debris', { geo: g.plate, mat: mats.debris, list: debris, shadow: false });
+
+  let instances = 0;
+  for (const b of batches.values()) {
+    if (!b.list.length) continue;
+    const mesh = new InstancedMesh(b.geo, b.mat, b.list.length);
+    b.list.forEach((m, i) => mesh.setMatrixAt(i, m));
+    mesh.castShadow = b.shadow;
+    mesh.receiveShadow = true;
+    mesh.computeBoundingSphere();
+    scene.add(mesh);
+    instances += b.list.length;
+  }
+
+  // Glow pools under braziers (one instanced additive mesh).
+  if (pools.length) {
+    const m = new MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: AdditiveBlending });
+    const d: N = uv().sub(0.5).length().mul(2);
+    m.colorNode = vec4(new Color('#FF8A2A'), smoothstep(float(1), float(0), d).pow(2).mul(0.22)) as N;
+    (m as N).fog = false;
+    const geo = new PlaneGeometry(1, 1);
+    geo.rotateX(-Math.PI / 2);
+    const mesh = new InstancedMesh(geo, m, pools.length);
+    pools.forEach((p, i) => mesh.setMatrixAt(i, M(p.x, 0.07, p.z, 0, 0, 0, p.r * 2, 1, p.r * 2)));
+    mesh.renderOrder = 5;
+    scene.add(mesh);
+  }
+
+  return { emitters, instancedMeshes: batches.size, instances };
+}

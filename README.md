@@ -23,6 +23,7 @@ npm run preview      # serve the production build
 npm run test         # unit tests (Vitest)
 npm run test:e2e     # Playwright: desktop + emulated mobile (first time: npx playwright install chromium)
 npm run test:all     # typecheck + unit + e2e
+node tools/shoot.mjs <outDir> 'name={"post.debugView":"grayscale"}'   # headless screenshots with tunables (dev server running)
 ```
 
 ## URL flags
@@ -31,4 +32,4 @@ npm run test:all     # typecheck + unit + e2e
 
 ## Status
 
-**M0 — Setup** done: renderer bootstrap with backend detection, fixed-step loop, seeded RNG, event bus, tunables registry + `?debug` panel, input actions (keyboard P1/P2, gamepad, touch), split screen on PC, quality tiers + dynamic resolution, asset manager skeleton, PWA manifest, unit and e2e tests. Next: **M1 — Look test** (doc 02).
+**M0 — Setup** done: renderer bootstrap with backend detection, fixed-step loop, seeded RNG, event bus, tunables registry + `?debug` panel, input actions (keyboard P1/P2, gamepad, touch), split screen on PC, quality tiers + dynamic resolution, asset manager skeleton, PWA manifest, unit and e2e tests. **M1 — Look test** implemented: `InkLit` material (banded ramp, hatching, sheen, emissive presets), ink pipeline (outlines, bloom, grade, paper, grain, FXAA/SMAA, debug views), height fog, steam/smoke particles, procedural textures, foundry track section with two placeholder vehicles, seeded set-dressing generator (props in bands around the track, instanced), molten-metal pool. Calibration notes in doc 02 §18. Next: **M2 — Driving prototype**.

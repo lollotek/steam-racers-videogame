@@ -1,6 +1,6 @@
 # 02 — Shader & Style Specification
 
-> Status: **v0.2** — S1–S4 decided; S5–S6 open.
+> Status: **v0.3** — S1–S4 decided; S5–S6 open. M1 implementation notes and calibrated values in §18.
 > Depends on: [01 — Engine & Visual Direction](01-engine-visual-direction.md) (D1 ink-comic style, D2 rotating 3/4 camera, D3 WebGPU + TSL, D4 mid-range 2021 mobile, D6 steam foundry biome).
 > Purpose: define *exactly* how a frame is built so shaders, art and tooling can be developed in parallel.
 > All numeric values are **starting values** to be tuned in the look-test prototype. Pixel sizes refer to a **1080p reference** and scale with render height.
@@ -157,11 +157,11 @@ Screen-space hatching "swims" when the camera moves, and our camera moves and ro
 
 | Target | Projection |
 |---|---|
-| Static environment | **World-space triplanar**, scale ~**1.5 hatch tiles per metre** |
+| Static environment | **World-space triplanar**, scale ~**0.05 hatch tiles per metre** (one 512² TAM tile ≈ 20 m; calibrated in M1, see §18) |
 | Vehicles & dynamic props | **Object-space triplanar** (strokes stick to the vehicle while it turns) |
 | Particles, liquids, emissive surfaces | No hatching |
 
-The scale is tuned so strokes are ~**2–3 px wide at 1080p** at the standard camera distance. The camera zoom range is small, so no screen-space correction is needed.
+The scale is tuned so strokes are ~**2–3 px wide at 1080p** at the standard camera distance (80 m, ~25 px/m). The camera zoom range is small, so no screen-space correction is needed.
 
 ### 4.3 Tone → strokes
 
@@ -413,3 +413,31 @@ The look test (one foundry track section, 2 placeholder vehicles, steam, fire, n
 | S4 | Racer recognition | ✅ **Decided (2026-11-12):** identity through banners, standards and runes, not full-body team colors (§13.1). |
 | S5 | Final 8 identity colors and emblem set | Open — define in the look test. |
 | S6 | Artist workflow for hand-drawn strokes/paper | Open — after the look test. |
+
+---
+
+## 18. M1 implementation notes (2026-11-13)
+
+Where the look-test implementation differs from or refines this spec. Source: `src/render/`.
+
+| Topic | Implementation | Follow-up |
+|---|---|---|
+| Ramp | Procedural soft bands (`ink.bands`, `ink.bandSoftness`) + color shift `ink.shadowColor → ink.litTint` instead of a ramp texture | Ramp texture per material class (§3.6) if artists need per-class control |
+| Hatching tone | `tone = 1 − (lum(lit − emissive) / lum(albedo)) / hatchRef`; albedo clamp 0.002 so painted ink lines do not leak into the tone | — |
+| Hatching scale | `ink.hatchScale` 0.05 tiles/m, strokes 3 texels wide, 0.07-tile long; thresholds 0.30 / 0.50 / 0.70; strength 0.85 | Tune per biome with the debug panel |
+| TAM mipmaps | GPU-generated (box filter), not stroke-preserving TAM mips | Build TAM mips offline in `tools/tam-generator` |
+| TAM texture | `DataTexture` (a Canvas texture premultiplies RGB by A and erases levels 1–3) | — |
+| Painted textures | Generated on canvas at boot (plates 3×3 per tile, rivets r=10 px at 1024², seams 9 px), sized for the 80 m camera | Replace with artist trim sheets / KTX2 |
+| Outlines | 8-tap cross + diagonal kernel on depth / view normals / meta ID; static wobble from a 256² noise tile | Roberts kernel on Low tier |
+| MRT blending | Scene pass sets `MaterialBlending` on `normal` and `meta`: opaque materials overwrite, particles write alpha 0 and keep the destination. Per-material MRT blend modes are ignored by the renderer | — |
+| Grading | Parametric grade (saturation, contrast, lift, gain) stands in for the 3D LUT | S1: export a LUT matched to `refs/engine` (1)/(4) and load it with `lut3D` |
+| Fog | `scene.fogNode` exponential height fog with a start distance (`fog.start` 70 m) | — |
+| Particles | CPU-simulated instanced sprites, back-to-front sorted, procedural ink-rimmed puff | Soft particles (depth fade), GPU compute path on WebGPU |
+| Light pools | Additive ground discs under furnace lights | Bake static lights for mobile |
+| Shadows | One directional shadow map following the view focus; Low tier = no shadow map | Blob shadows on Low |
+| Split screen | Direct render per viewport, no post chain | Per-viewport pipeline in M3 (doc 03 §10.4) |
+| Shader warm-up | `renderer.compileAsync` before the first frame | — |
+
+Camera for the look test: 58 m at FOV 30° (doc 03 §9); hatch scale was calibrated at 80 m and still reads at 58 m.
+
+Calibrated defaults (all editable in `?debug`): key light 4.5, ambient 3.0, furnace lights 600 / 24 m, exposure 1.25, saturation 0.9, contrast 1.08, vignette 0.3, paper 8%, grain 3%, vehicles' albedo ×1.6 (value hierarchy §13).

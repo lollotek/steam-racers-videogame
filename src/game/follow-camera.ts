@@ -5,8 +5,8 @@ import { tunables } from '../core/tunables';
 tunables.registerGroup('camera', [
   { key: 'camera.fov', type: 'number', default: 30, min: 10, max: 70, step: 1, unit: '°', label: 'FOV' },
   { key: 'camera.pitch', type: 'number', default: 52, min: 20, max: 89, step: 1, unit: '°', label: 'Pitch' },
-  { key: 'camera.distance', type: 'number', default: 80, min: 10, max: 200, step: 1, unit: 'm', label: 'Distance' },
-  { key: 'camera.distanceAtSpeed', type: 'number', default: 95, min: 10, max: 240, step: 1, unit: 'm', label: 'Distance at max speed' },
+  { key: 'camera.distance', type: 'number', default: 58, min: 10, max: 200, step: 1, unit: 'm', label: 'Distance' },
+  { key: 'camera.distanceAtSpeed', type: 'number', default: 70, min: 10, max: 240, step: 1, unit: 'm', label: 'Distance at max speed' },
   { key: 'camera.lookAhead', type: 'number', default: 12, min: 0, max: 30, step: 0.5, unit: 'm', label: 'Look-ahead' },
   { key: 'camera.yawHalfLife', type: 'number', default: 0.35, min: 0.02, max: 2, step: 0.01, unit: 's', label: 'Yaw half-life' },
   { key: 'camera.posHalfLife', type: 'number', default: 0.12, min: 0.01, max: 1, step: 0.01, unit: 's', label: 'Position half-life' },

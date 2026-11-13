@@ -6,6 +6,7 @@ import { TouchSource } from './input/touch';
 import { Game } from './game/game';
 import { App } from './ui/App';
 import { ui } from './ui/state';
+import { tunables } from './core/tunables';
 
 async function boot(): Promise<void> {
   const flags = parseFlags(location.search);
@@ -33,10 +34,11 @@ async function boot(): Promise<void> {
     });
 
   game = new Game(gfx, { flags, isMobile, tier, touch });
+  await game.warmUp();
   game.start();
 
   if (import.meta.env.DEV || flags.test) {
-    (window as unknown as { __steamRacers: unknown }).__steamRacers = { game, snapshot: () => game!.snapshot() };
+    (window as unknown as { __steamRacers: unknown }).__steamRacers = { game, tunables, snapshot: () => game!.snapshot() };
   }
 
   if (flags.debug) {

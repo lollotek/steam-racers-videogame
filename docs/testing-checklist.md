@@ -34,3 +34,26 @@
 - [ ] Badge shows the backend and fps; on a mid-range 2021 phone the tier is `medium` and fps ≈ 30 or more.
 - [ ] `?debug` panel starts collapsed and does not block the touch controls when collapsed.
 - [ ] Install as PWA from a production build (`npm run build && npm run preview`): opens fullscreen in landscape.
+
+## M1 — Look test
+
+Compare against `refs/engine/engine (1).jpg` and `engine (4).jpg` (doc 02 §16). Use `?debug`, group **showcase → Camera follows: rival** to watch the demo tank drive the loop.
+
+### PC (WebGPU)
+
+- [ ] Outlines on vehicles, barriers, props; vehicle silhouettes thicker. No outlines around smoke/steam.
+- [ ] Hatching visible in shadowed areas (barrier and furnace shadows), strokes stay fixed on surfaces while the camera moves (no swimming, no redraw animation).
+- [ ] Furnace mouths flicker, neon signs glow with bloom and drop out occasionally, vehicle runes pulse.
+- [ ] Steam from vents (white), smoke from chimneys and vehicle stacks (dark), more exhaust at higher speed.
+- [ ] Plates with rivets and seams, grates, rust readable at gameplay distance.
+- [ ] `post → Post debug view`: grayscale shows track mid-grey, ground darker, vehicles brightest (§13).
+- [ ] Debug views work: normals, depth, edges, objectId, noPost; `ink → Material debug view`: albedo, lighting, hatchTone.
+- [ ] `lines → Hand-drawn wobble` Off/Low changes line shape, never animates.
+- [ ] Quality tiers Low → Ultra switch at runtime (Low: no hatching, no shadow map).
+- [ ] Frame rate ≥ 60 fps at High, 1080p, mid GPU.
+- [ ] R (Reposition) puts the car back on the track.
+
+### Phone
+
+- [ ] Same look at Medium tier, ≥ 30 fps stable on a mid-range 2021 phone.
+- [ ] First load: shader warm-up time (console `[render] shaders compiled in … ms`) acceptable (< 10 s).

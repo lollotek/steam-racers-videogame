@@ -277,6 +277,8 @@ A simple grid editor in the spirit of block-based track builders: the user place
 | **Runtime** | The editor is a separate app entry (`/editor.html`) sharing the engine, renderer and asset manager. "Test drive" button launches the track in the game. |
 | **Tabletop compatibility (secondary goal)** | The block grid maps 1:1 to **physical tiles**. Export targets later: printable top-down tile images (orthographic render per block, with bleed and cut marks) and track layout sheets; vehicle GLBs reusable for **miniatures** (watertight, scaled export for 3D print). Not in scope before M3, but block size and naming are chosen with this in mind. |
 
+**First version implemented in M1** (`src/game/dressing.ts`): seeded generator filling three bands around the track (edge: barrels, crates, tyres, sandbags, braziers, spike fences, scrap; mid: boilers, generators, pipe clusters, scrap piles, big gears; far: storage tanks, smoking chimneys, girder towers) plus ground debris, avoiding the road and hand-placed props, batched into one `InstancedMesh` per geometry/material pair. Densities are tunables (`dressing.*`).
+
 Editor implementation is scheduled **after M3** (M2/M3 use a hand-written test track JSON using the same block format).
 
 ---
@@ -298,7 +300,7 @@ Editor implementation is scheduled **after M3** (M2/M3 use a hand-written test t
 |---|---|
 | FOV | 30° |
 | Pitch | 52° |
-| Distance | 80 m (→ 95 m at max speed); at FOV 30° this shows ~40–50 m of track vertically, as in the engine refs |
+| Distance | 58 m (→ 70 m at max speed); at FOV 30° a vehicle fills ~1/8 of the screen height, as in the engine refs (tuned in M1) |
 | Look-ahead | 0–12 m along velocity |
 | Yaw follow | Follows the **track tangent** blended with vehicle heading (70/30), critically damped spring, half-life ~0.35 s |
 | Collision | None needed (high camera); occluders near camera fade via dithering |

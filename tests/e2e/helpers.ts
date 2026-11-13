@@ -6,7 +6,8 @@ export interface Snapshot {
   frames: number;
   simSteps: number;
   paused: boolean;
-  players: { gear: number; speed: number; heading: number; device: string; input: string }[];
+  particles: number;
+  players: { gear: number; pushCooldown: number; speed: number; heading: number; device: string; input: string }[];
 }
 
 export async function snapshot(page: Page): Promise<Snapshot> {
@@ -21,8 +22,8 @@ export async function boot(page: Page, query = ''): Promise<string[]> {
     if (m.type() === 'error') errors.push(m.text());
   });
   await page.goto(`/?test${query ? `&${query}` : ''}`);
-  await expect.poll(() => page.evaluate(() => '__steamRacers' in window), { timeout: 30_000 }).toBe(true);
-  await expect.poll(async () => (await snapshot(page)).frames, { timeout: 30_000 }).toBeGreaterThan(30);
+  await expect.poll(() => page.evaluate(() => '__steamRacers' in window), { timeout: 90_000 }).toBe(true);
+  await expect.poll(async () => (await snapshot(page)).frames, { timeout: 90_000 }).toBeGreaterThan(30);
   return errors;
 }
 
