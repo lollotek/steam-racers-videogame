@@ -1,5 +1,6 @@
 import { ui, formatTime, type PlayerHud } from './state';
 import { TouchControls } from './TouchControls';
+import { Controls } from './Controls';
 import type { TouchSource } from '../input/touch';
 
 interface Props {
@@ -35,14 +36,15 @@ export function App({ touch, onResume, onRestart }: Props) {
             <table>
               <tbody>
                 {results.map((r, i) => (
-                  <tr key={r.name} class={r.isPlayer ? 'me' : ''}>
-                    <td>{i + 1}</td>
+                  <tr key={r.name} class={`${r.isPlayer ? 'me' : ''} ${r.retired ? 'retired' : ''}`} data-testid={`result-${i + 1}`}>
+                    <td>{r.retired ? '—' : i + 1}</td>
                     <td>
                       <span class="swatch" style={{ background: r.color }} />
-                      {r.name}
+                      <span class="name">{r.name}</span>
                     </td>
-                    <td>{r.time !== null ? formatTime(r.time) : 'racing…'}</td>
+                    <td>{r.retired ? 'RETIRED' : r.time !== null ? formatTime(r.time) : 'racing…'}</td>
                     <td class="dim">best {formatTime(r.bestLap)}</td>
+                    <td class="dim">{r.pf} PF</td>
                   </tr>
                 ))}
               </tbody>
@@ -63,9 +65,10 @@ export function App({ touch, onResume, onRestart }: Props) {
       )}
       {ui.paused.value && (
         <div class="overlay" data-testid="pause-overlay" onPointerDown={onResume}>
-          <div class="panel">
+          <div class="panel pause">
             <h1>Paused</h1>
-            <p>Esc / P / Start, or tap to resume</p>
+            <Controls split={split} touch={ui.showTouch.value} />
+            <p class="dim">Esc / P / Start, or tap to resume</p>
           </div>
         </div>
       )}
@@ -86,7 +89,7 @@ function Leaderboard() {
   return (
     <div class="leaderboard" data-testid="leaderboard">
       {ui.standings.value.map((s, i) => (
-        <div key={s.name} class={`row ${s.isPlayer ? 'me' : ''}`}>
+        <div key={s.name} class={`row ${s.isPlayer ? 'me' : ''} ${s.retired ? 'retired' : ''}`}>
           <span class="pos">{i + 1}</span>
           <span class="swatch" style={{ background: s.color }} />
           <span class="name">{s.name}</span>
@@ -127,8 +130,59 @@ function PlayerHudView({ p, split }: { p: PlayerHud; split: boolean }) {
         <div class={`push ${p.pushReady ? 'ready' : ''}`}>STEAM</div>
         <div class="device">{p.device}</div>
       </div>
+      <div class="strip">
+        <HullBox p={p} />
+        <div class={`ammo ${p.cannonReady ? 'ready' : ''} ${p.armed ? '' : 'locked'}`} data-testid={`ammo-p${p.index + 1}`} title="Front cannon shells">
+          <span class="ammo-label">CANNON</span>
+          <span class="ammo-count">{p.armed ? p.ammo : `LOCKED · LAP ${p.unlockLap + 1}`}</span>
+        </div>
+        <BoilerGauge p={p} />
+      </div>
       {p.wrongWay && !p.finished && <div class="wrong-way">WRONG WAY</div>}
       {p.finished && <div class="finished">FINISH</div>}
+      <div class="banners" data-testid={`banners-p${p.index + 1}`}>
+        {p.banners.map((b) => (
+          <div key={b.id} class={`banner ${b.tone}`}>
+            {b.text}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Hull box (gameplay.md §6.1): PF bar, orange under 50 %, red and flashing under 25 %. */
+function HullBox({ p }: { p: PlayerHud }) {
+  const f = p.pfMax > 0 ? p.pf / p.pfMax : 0;
+  return (
+    <div class={`hull ${p.condition}`} data-testid={`hull-p${p.index + 1}`}>
+      <span class="hull-label">HULL</span>
+      <div class="hull-bar">
+        <div class="hull-fill" style={{ width: `${(f * 100).toFixed(1)}%` }} />
+      </div>
+      <span class="hull-num" data-testid={`pf-p${p.index + 1}`}>
+        {p.pf}
+      </span>
+    </div>
+  );
+}
+
+/** Boiler gauge (gameplay.md §5.2): 0 → 2 × CAL, right half red; pressure bar under the red half. */
+function BoilerGauge({ p }: { p: PlayerHud }) {
+  const b = p.boiler;
+  const max = Math.max(1, b.cal * 2);
+  return (
+    <div class={`boiler ${b.test ? 'testing' : ''} ${b.pv > b.cal ? 'red' : ''}`} data-testid={`boiler-p${p.index + 1}`}>
+      <span class="boiler-label">BOILER</span>
+      <div class="boiler-gauge">
+        {Array.from({ length: max }, (_, i) => (
+          <i key={i} class={`cell ${i >= b.cal ? 'over' : ''} ${i < Math.floor(b.pv) ? 'full' : ''}`} />
+        ))}
+        <div class="pressure" style={{ width: `${(b.pressure * 50).toFixed(1)}%` }} />
+      </div>
+      <span class="boiler-num">
+        {Math.floor(b.pv)}/{b.cal}
+      </span>
     </div>
   );
 }

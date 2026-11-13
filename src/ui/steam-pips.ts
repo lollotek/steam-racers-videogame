@@ -1,6 +1,6 @@
 /**
  * Steam-point pips shared by the under-vehicle tag and the touch STEAM button ring.
- * Pure logic, unit tested. Reads the placeholder boiler today; M3 feeds it the real one.
+ * Pure logic, unit tested. Fed by the boiler (rules/boiler.ts).
  */
 
 export type PipKind =

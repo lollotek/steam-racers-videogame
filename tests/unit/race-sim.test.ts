@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { RaceSim, initPhysics } from '../../src/sim/race-sim';
 import { createAutopilot, drive } from '../../src/ai/autopilot';
+import { createDriver, driveRacer } from '../../src/ai/driver';
 import { HOT_ROD, STEAM_TANK } from '../../src/vehicles/vehicle-physics';
 import { emptyFrame, type ActionFrame } from '../../src/input/actions';
 import { GEAR_RATIOS } from '../../src/vehicles/gearbox';
@@ -64,6 +65,70 @@ describe('race sim (Rapier, headless)', () => {
     for (const r of sim.racers) expect(r.progress.bestLap!).toBeLessThan(45);
     sim.dispose();
   }, 60_000);
+
+  it('M3: 4 AI drivers race 3 laps with the full rules (start test, cannon, hull), deterministic', () => {
+    const go = () => {
+      const sim = new RaceSim(file(), [0, 1, 2, 3].map((i) => ({ spec: i % 2 ? STEAM_TANK : HOT_ROD, name: `ai${i}` })), 7);
+      const drivers = sim.racers.map((_, i) => createDriver(i, 7, ((i % 3) - 1) * 1.5));
+      const kinds = new Set<string>();
+      while (sim.phase !== 'finished' && sim.clock < 260) {
+        sim.step(drivers.map((d) => driveRacer(d, sim)));
+        for (const e of sim.drainRuleEvents()) kinds.add(e.type);
+      }
+      const out = { phase: sim.phase, order: sim.standings(), pf: sim.racers.map((r) => r.rules.hull.pf), kinds, starts: sim.racers.map((r) => r.rules.startOutcome) };
+      sim.dispose();
+      return out;
+    };
+    const a = go();
+    expect(a.phase).toBe('finished');
+    expect(a.kinds.has('start')).toBe(true);
+    expect(a.kinds.has('fire')).toBe(true);
+    expect(a.kinds.has('hit')).toBe(true);
+    expect(a.starts.every((o) => o !== null)).toBe(true);
+    const b = go();
+    expect(b.order).toEqual(a.order);
+    expect(b.pf).toEqual(a.pf);
+  }, 120_000);
+
+  it('weapons are locked until the first lap is complete, then an armed event fires', () => {
+    const f = file();
+    f.laps = 2;
+    const sim = new RaceSim(f, [0, 1].map((i) => ({ spec: HOT_ROD, name: `ai${i}` })), 3);
+    const drivers = sim.racers.map((_, i) => createDriver(i, 3, 0));
+    const fires: number[] = [];
+    const armed: number[] = [];
+    while (sim.phase !== 'finished' && sim.clock < 200) {
+      // Everyone holds the trigger the whole race.
+      sim.step(drivers.map((d) => {
+        const c = driveRacer(d, sim);
+        c.pressed.fireFront = true;
+        return c;
+      }));
+      for (const e of sim.drainRuleEvents()) {
+        if (e.type === 'fire') fires.push(sim.racers[e.racer]!.progress.lap);
+        if (e.type === 'armed') armed.push(e.racer);
+      }
+    }
+    expect(armed.sort()).toEqual([0, 1]);
+    expect(fires.length).toBeGreaterThan(0);
+    expect(Math.min(...fires)).toBeGreaterThanOrEqual(1);
+    sim.dispose();
+  }, 60_000);
+
+  it('a wrecked racer stops, is retired (last in the standings) and the race still ends', () => {
+    const sim = new RaceSim(file(), [
+      { spec: HOT_ROD, name: 'a' },
+      { spec: HOT_ROD, name: 'b' },
+    ]);
+    run(sim, 60 * 5, () => [idle(), idle()]);
+    sim.rules.hurt(sim.racers[0]!, 99, 'shot', sim.clock);
+    expect(sim.racers[0]!.vehicle.wrecked).toBe(true);
+    expect(sim.drainRuleEvents().some((e) => e.type === 'wreck' && e.racer === 0)).toBe(true);
+    run(sim, 60 * 2, () => [idle((f) => (f.pressed.steamPush = true)), idle()]);
+    expect(sim.racers[0]!.vehicle.speed()).toBeLessThan(0.5);
+    expect(sim.standings()).toEqual([1, 0]);
+    sim.dispose();
+  });
 
   // Driving must never glitch (strategy first): no tumbling, no flying, no spinning like a top,
   // whatever the player does to the barriers and whatever mass the tuning panel sets.

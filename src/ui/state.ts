@@ -1,8 +1,29 @@
 import { signal } from '@preact/signals';
 import type { SteamReadout } from './steam-pips';
 
+export interface Banner {
+  id: number;
+  text: string;
+  tone: 'good' | 'bad' | 'warn' | 'dmg' | 'info';
+  /** performance.now() when it disappears. */
+  until: number;
+}
+
 /** UI-facing state, written by the game (throttled), read by Preact components. */
 export interface PlayerHud {
+  /** Hull points (gameplay.md §6.1). */
+  pf: number;
+  pfMax: number;
+  condition: 'ok' | 'smoke' | 'fire' | 'wreck';
+  /** Front cannon shells and readiness. */
+  ammo: number;
+  cannonReady: boolean;
+  /** Weapons unlock after `unlockLap` laps (clean first lap). */
+  armed: boolean;
+  unlockLap: number;
+  /** Boiler gauge: 0 → 2 × CAL, right half red (gameplay.md §5.2). */
+  boiler: { pv: number; cal: number; pressure: number; test: boolean };
+  banners: Banner[];
   index: number;
   gear: number;
   speedKmh: number;
@@ -27,6 +48,9 @@ export interface ResultRow {
   time: number | null;
   bestLap: number | null;
   isPlayer: boolean;
+  /** Wrecked before the finish. */
+  retired: boolean;
+  pf: number;
 }
 
 export const ui = {
@@ -47,7 +71,7 @@ export const ui = {
   /** Shown when every player has finished. */
   results: signal<ResultRow[] | null>(null),
   /** Standings for the mini leaderboard: name + color, in order. */
-  standings: signal<{ name: string; color: string; isPlayer: boolean }[]>([]),
+  standings: signal<{ name: string; color: string; isPlayer: boolean; retired: boolean }[]>([]),
 };
 
 export function formatTime(t: number | null): string {

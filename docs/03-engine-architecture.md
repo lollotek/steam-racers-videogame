@@ -301,7 +301,7 @@ Editor implementation is scheduled **after M3** (M2/M3 use a hand-written test t
 
 ### 7.4 Race simulation core (implemented in M2)
 
-`src/sim/race-sim.ts` (`RaceSim`) owns the Rapier world, the vehicles, progress and race phases (countdown → running → finished). It has no rendering or DOM imports and is used unchanged by the game and the headless runner. Static colliders: ground slab and barrier walls every 4 m on both edges (taller than the visible barricades so cars are never launched out). Safety nets: auto-reposition after 2.5 s stuck/upside down or 1 s out of bounds; manual reposition action. Determinism: same inputs → identical positions (unit test).
+`src/sim/race-sim.ts` (`RaceSim`) owns the Rapier world, the vehicles, progress and race phases (countdown → running → finished). It has no rendering or DOM imports and is used unchanged by the game and the headless runner. Starting grid: 2 staggered columns behind the line, spacing tunable (`race.grid*`, default 14 m between rows, left column 7 m back, columns at ±0.5 × half width) so the start is not a pile-up. Static colliders: ground slab and barrier walls every 4 m on both edges (taller than the visible barricades so cars are never launched out). Safety nets: auto-reposition after 2.5 s stuck/upside down or 1 s out of bounds; manual reposition action. Determinism: same inputs → identical positions (unit test).
 
 Vehicles (`src/vehicles/`): `gearbox.ts` (pure gear/push/brake logic) + `vehicle-physics.ts` (Rapier ray-cast vehicle controller with the arcade layer: engine force chases the gear target speed, push, surface grip/drag, rear-grip drift, upright assist; wheel rays ignore other vehicles). Tunables groups `handling`, `gearbox`, `race`.
 
@@ -323,6 +323,23 @@ Vehicles (`src/vehicles/`): `gearbox.ts` (pure gear/push/brake logic) + `vehicle
 - Feedback (tunables group `feedback`, used for every impact): **sparks** (`src/render/fx/sparks.ts`: warm, hard-edged, tapered ink strokes redrawn at `sparkRedraw` fps; metal edges and vehicles), **dust** puffs (earth, sandbags) and **screen shake** (`FollowCamera.addShake/holdShake`: trauma model, amplitude/roll/frequency/decay and per-event strengths configurable, can be switched off).
 - **Surroundings follow the barricade**: `buildDressing` asks which barricade is on that side of the nearest piece and applies its theme (prop weights and density): riveted → foundry machinery, corrugated → depots and shacks, hedgehog → scrapyard and tank traps, sandbags → fortified post, earth → open wasteland with rocks, barbed → no man's land.
 
+### 7.5 Race rules layer (implemented in M3)
+
+The tabletop rules (gameplay.md §4–7, "simple gameplay" scope) live in `src/rules/` as pure, deterministic functions with their values in tunables groups; `src/sim/race-rules.ts` (`RaceRules`) applies them inside `RaceSim`'s fixed step and emits rule events (`drainRuleEvents()`). Gameplay randomness (dice, cone, notch) uses the seeded `gameplay` stream: `new RaceSim(track, racers, seed)`.
+
+| Module | Rules | Tunables |
+|---|---|---|
+| `rules/stats.ts` | Tabletop characteristics per vehicle: CAL, AFF, RES, MAN, PF, ramming mass | `stats.<vehicle>.*` |
+| `rules/start-test.ts` | Start test: needle rises with STEAM held, green band (wider with MAN and for pole), AFF tolerance above it; share of the last 1.5 s in the band → perfect (3rd + long free push) / good (2nd + short push) / normal / stall (needle at zero or in the red at GO). Calm time after GO: no pushes, no fire | `start.*` |
+| `rules/boiler.ts` | PV: ignition, passive generation (slower above CAL, none after an explosion), downshift from 4th+ refund; red zone pressure (slower with AFF); reliability test (needle + green notch, VENT to hit it) and its outcome table; VENT outside the test dumps 1 PV and leaves a cloud | `boiler.*` |
+| `rules/hull.ts` | PF, RES on weapon hits, smoke < 50 %, fire < 25 %, wreck at 0; edge damage per barricade (hit / crash / scrape every N s, +1 when rammed into it); ramming test (mass × gear, perpendicular bonus, die, margin → PF and shove); fast side contacts 1 PF | `hull.*` |
+| `rules/sight.ts` | Line of sight: barricades never break and stop shells. A line is blocked where it leaves the track corridor (centre line ± half width + `weapons.sightMargin`), e.g. across the inside of a curve. Rivals out of sight cannot be locked; a shell whose actual line clips a barricade stops there | `weapons.sight*` |
+| `rules/cannon.ts` | Weapons are locked for the first `weapons.unlockLap` laps (default 1: a clean first lap; `armed` event + banner when they unlock). Front cannon: auto-lock on the nearest rival in sight in the nose cone, lock time, ammo (+ per lap until ammo crates exist), reload; dispersion cone (high gears, steering, recent manoeuvre, vent clouds widen it; holding the line narrows it) + shell wobble; zones centre / vital / body / edge / miss; centre = −1 gear; shell flight time | `weapons.*` |
+
+`gearbox.ts` spends PV from the boiler (`GearboxState.boiler`); red zone pushes are stronger (`boiler.redPushBonus`). A wrecked vehicle (`PhysicsVehicle.wrecked`) keeps its body as an obstacle with the brakes locked, is never repositioned, takes no more damage and is sorted last (retired) by `RaceSim.standings()`. Finished racers take no damage. The race ends when every racer has finished or is a wreck.
+
+All values are **placeholders** until the owner confirms them (§19, A7); the headless runner prints per-racer start outcome, damage taken by source, boiler outcomes, shots and hit zones, rams, final PF and wrecks to tune them.
+
 ## 8. AI
 
 - **Follow a racing line** with look-ahead proportional to speed (pure pursuit), target speed from upcoming curvature.
@@ -331,6 +348,8 @@ Vehicles (`src/vehicles/`): `gearbox.ts` (pure gear/push/brake logic) + `vehicle
 - **Recovery**: stuck/off-track detection → reverse or respawn.
 - Weapons behaviour deferred to the gameplay doc; the AI writes the same `driveCommand` as the player (fire included).
 - Uses its own RNG stream (deterministic).
+
+**Implemented in M3** (`src/ai/driver.ts`, on top of the M2 autopilot): start test (holds STEAM towards the band centre with a skill-dependent error), avoidance of the slower car just ahead (shifts the racing line to the side with more room, eases back), boiler (VENT near the notch on a reliability test, error shrinks with `ai.skill`; voluntary vent above `ai.ventPressure`), front cannon (fires when locked, `ai.fireRate`). Difficulty levels, rubber-banding and reverse-recovery are not in yet (after M3, with the menu).
 
 ---
 
@@ -377,6 +396,7 @@ Following the track tangent rather than the raw vehicle heading keeps the view c
 
 - Two `PlayerSlot`s → two cameras, rendered as **two viewports** (horizontal split, 16:9 → two 16:4.5 halves, or vertical on ultrawide) with scissor.
 - The post chain runs per viewport (render targets sized to each half), so the pixel cost stays close to single-player; draw calls roughly double. Split screen forces at most the **High** tier with reduced particles.
+- **Implemented in M3** (`src/render/split.ts`): one `InkPipeline` per player, each rendered into its own half-height render target, then one pass stacks them (rendering both chains straight to the canvas fails: WebGPU clears the whole attachment, ignoring the scissor). Each scene pass still renders at full buffer size (the final quad squeezes it), so today the pixel cost is about two frames; half-size scene passes and the tier cap are still to do. Warm-up compiles both chains (longer boot).
 - Disabled on touch devices / mobile UA.
 
 ---
@@ -473,7 +493,7 @@ iOS Safari tabs are killed above ~1–1.5 GB total; budget conservatively.
 
 ### 15.2 Simulation tooling (automated tests)
 
-Implemented in M2: `npx tsx tools/sim/run.ts [--racers 4] [--laps 3] [--track foundry-01] [--preset tuning.json] [--max 400] [--trace]` runs autopilot races ~250× faster than real time and prints JSON (lap times, best lap, top speed, repositions, off-track %, drift %, wrong-way %). `--preset` accepts the JSON exported from the `?debug` panel, so tuning made by a human can be checked automatically.
+Implemented in M2, extended in M3: `npx tsx tools/sim/run.ts [--racers 4] [--laps 3] [--track foundry-01] [--preset tuning.json] [--max 400] [--seed 1] [--trace]` runs AI races with the full rules (M3: plus start outcome, damage by source, boiler outcomes, shots and hit zones, rams, final PF, wrecks per racer) ~250× faster than real time and prints JSON (lap times, best lap, top speed, repositions, off-track %, drift %, wrong-way %). `--preset` accepts the JSON exported from the `?debug` panel, so tuning made by a human can be checked automatically.
 
 
 - The simulation runs without the renderer (`core`, `physics`, `track`, `race`, `ai`, `rules` have no rendering imports, §3).
@@ -536,4 +556,4 @@ After M3: Grand Prix and economy, garage/upgrades, modules, full arsenal, cards 
 | A4 | Distribution | ✅ **Decided (2026-11-12):** PWA only. |
 | A5 | Gameplay reference | ✅ **Decided (2026-11-12):** [gameplay.md](gameplay.md); simple gameplay up to M3, advanced systems after. |
 | A6 | Block size vs tabletop tile size and vehicle scale | **Proposed in M2:** 20 m cells, 14 m track (§7.1.1). Confirm with the board game's tile size. |
-| A7 | Gameplay values (`rules` groups referenced in gameplay.md: gear speeds, PV costs, boiler timings, damage) | Open — ask the owner when the related features are implemented. |
+| A7 | Gameplay values (`rules` groups referenced in gameplay.md: gear speeds, PV costs, boiler timings, damage) | **Open — needed now (M3 implemented with placeholders):** vehicle CAL/AFF/RES/MAN, ignition PV and passive generation (also above CAL?), pressure and test timings, outcome damage, start test band and outcomes, edge damage per barricade, ramming formula, cannon damage/zones/cone/ammo. All are tunables (`stats`, `boiler`, `start`, `hull`, `weapons`) and listed in §7.5. |

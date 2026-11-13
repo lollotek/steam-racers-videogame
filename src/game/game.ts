@@ -2,6 +2,8 @@
  * Game shell (doc 03 §4): the race simulation (RaceSim, fixed 60 Hz) + interpolated presentation.
  * Per-player slots own input, camera and viewport (single player, or PC split screen).
  * M2: Rapier vehicles on the compiled block track, laps, countdown, results, autopilot rivals.
+ * M3: race rules (start test, boiler, hull, ramming, front cannon), AI drivers, centre prompts,
+ *     banners, minimap, retired racers in the results.
  */
 import { Quaternion, Vector3, type Scene } from 'three/webgpu';
 import { FixedStepLoop } from '../core/loop';
@@ -17,6 +19,7 @@ import type { ActionFrame, InputSource } from '../input/actions';
 import { DynamicResolution, TIERS, type QualityTierName } from '../render/quality';
 import { type RendererHandle, pixelRatioFor } from '../render/renderer';
 import { InkPipeline } from '../render/pipeline';
+import { SplitCompositor } from '../render/split';
 import { SharedTex, U } from '../render/ink/ink-uniforms';
 import { makeProceduralSet, type ProceduralSet } from '../render/procedural/textures';
 import { ParticleSystem, type Emitter } from '../render/fx/particles';
@@ -28,7 +31,14 @@ import { buildFoundry, type FoundryWorld } from './foundry-scene';
 import { buildHotRod, buildSteamTank, type VehicleRig } from './vehicles';
 import { RaceSim, SIM_STEP } from '../sim/race-sim';
 import { HOT_ROD, STEAM_TANK, type VehicleSpec } from '../vehicles/vehicle-physics';
-import { createAutopilot, drive, type AutopilotState } from '../ai/autopilot';
+import { createDriver, driveRacer, type DriverState } from '../ai/driver';
+import type { RuleEvent } from '../sim/race-rules';
+import { hullCondition } from '../rules/hull';
+import { coneHalfAngle, isLocked } from '../rules/cannon';
+import { PlayerGauges, type GaugeFrame } from '../ui/gauges';
+import { Minimap } from '../ui/minimap';
+import type { Banner } from '../ui/state';
+import type { ViewportRect } from '../ui/vehicle-tag';
 import { compileTrack } from '../track/compile';
 import type { TrackFile } from '../track/track-format';
 import foundryTrack from '../tracks/foundry-01.json';
@@ -36,6 +46,7 @@ import { ui } from '../ui/state';
 import { VehicleTag } from '../ui/vehicle-tag';
 import type { SteamReadout } from '../ui/steam-pips';
 import { canPush, type GearboxState } from '../vehicles/gearbox';
+import { boilerCal } from '../rules/boiler';
 
 /** Placeholder identity colors until S5 is decided (doc 02 §13.1). */
 export const IDENTITY_COLORS = ['#E8E2D0', '#D94848', '#3F7FE0', '#E0C040', '#4FBF6A', '#B060D0', '#40C8C0', '#E07A9A'];
@@ -71,6 +82,9 @@ export interface PlayerSlot {
   camYaw: number;
   /** Gear + steam pips pinned below the vehicle. */
   tag: VehicleTag;
+  /** Centre prompts: start test, boiler test, reticle, under fire. */
+  gauges: PlayerGauges;
+  banners: Banner[];
 }
 
 interface RacerView {
@@ -79,7 +93,10 @@ interface RacerView {
   exhaust: Emitter[];
   dust: Emitter;
   color: string;
-  autopilot: AutopilotState | null;
+  driver: DriverState | null;
+  /** Engine smoke / fire / wreck smoke (hull condition). */
+  damage: Emitter;
+  fireAcc: number;
   /** Fractional scrape sparks / dust carried between frames. */
   scrapeAcc: number;
 }
@@ -101,7 +118,9 @@ export class Game {
   readonly dynres: DynamicResolution;
   readonly particles: ParticleSystem;
   readonly sparks: SparkSystem;
-  readonly pipeline: InkPipeline | null;
+  /** One ink pipeline per player viewport (split screen: each one drawn into its half). */
+  readonly pipelines: InkPipeline[];
+  private split: SplitCompositor | null = null;
   sim!: RaceSim;
   private views: RacerView[] = [];
   private tex: ProceduralSet;
@@ -114,6 +133,10 @@ export class Game {
   private qa = new Quaternion();
   private qb = new Quaternion();
   private players: number;
+  private races = 0;
+  private bannerId = 0;
+  private minimap: Minimap | null = null;
+  private tmp2 = new Vector3();
 
   constructor(
     readonly gfx: RendererHandle,
@@ -156,9 +179,11 @@ export class Game {
     for (let i = 0; i < this.players; i++) this.addSlot(i);
 
     this.startRace();
+    this.minimap = new Minimap(document.getElementById('ui') ?? document.body, this.sim.track);
 
     this.gfx.renderer.shadowMap.enabled = true;
-    this.pipeline = this.players === 1 ? new InkPipeline(gfx.renderer, this.scene, this.slots[0]!.camera.camera, { noise: this.tex.noise, paper: this.tex.paper }) : null;
+    this.pipelines = this.slots.map((s) => new InkPipeline(gfx.renderer, this.scene, s.camera.camera, { noise: this.tex.noise, paper: this.tex.paper }));
+    if (this.pipelines.length === 2) this.split = new SplitCompositor(gfx.renderer, this.pipelines);
 
     this.setTier(opts.tier);
     window.addEventListener('resize', this.onResize);
@@ -175,8 +200,10 @@ export class Game {
     } else {
       sources.push(new KeyboardSource(`kb-p${index + 1}`, index === 0 ? P1_KEYS : P2_KEYS), new GamepadSource(index));
     }
-    const tag = new VehicleTag(document.getElementById('ui') ?? document.body, index);
-    this.slots.push({ index, input: new PlayerInput(index, sources), camera: new FollowCamera(1), camYaw: 0, tag });
+    const parent = document.getElementById('ui') ?? document.body;
+    const tag = new VehicleTag(parent, index);
+    const gauges = new PlayerGauges(parent, index);
+    this.slots.push({ index, input: new PlayerInput(index, sources), camera: new FollowCamera(1), camYaw: 0, tag, gauges, banners: [] });
   }
 
   /** (Re)build the race: physics world, vehicles and their visuals. Racers 0..players-1 are humans. */
@@ -187,10 +214,14 @@ export class Game {
     this.sim = new RaceSim(
       this.trackFile,
       specs.map((spec, i) => ({ spec, name: i < this.players ? (this.players === 2 ? `Player ${i + 1}` : 'Player One') : RIVAL_NAMES[i]! })),
+      this.opts.flags.seed + this.races++,
     );
     this.buildViews(specs);
-    this.views.forEach((v, i) => (v.autopilot = i >= this.players ? createAutopilot(((i % 3) - 1) * 1.6) : null));
-    for (const s of this.slots) s.camYaw = this.sim.racers[s.index]!.vehicle.heading();
+    this.views.forEach((v, i) => (v.driver = i >= this.players ? createDriver(i, this.sim.rules.rng.int(0, 1e9), ((i % 3) - 1) * 1.6) : null));
+    for (const s of this.slots) {
+      s.camYaw = this.sim.racers[s.index]!.vehicle.heading();
+      s.banners = [];
+    }
     ui.results.value = null;
     this.loop.resetAccumulator();
     this.dynres.reset();
@@ -206,6 +237,7 @@ export class Game {
       this.scene.remove(v.rig.root);
       for (const e of v.exhaust) e.enabled = false;
       v.dust.enabled = false;
+      v.damage.enabled = false;
     }
     this.views = [];
     specs.forEach((spec, i) => {
@@ -216,7 +248,8 @@ export class Game {
         this.particles.addEmitter({ kind: 'smoke', rate: 0, position: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 2.5, z: 0 }, spread: 0.4, life: [1.2, 2.4], size: [0.8, 3.2] }),
       );
       const dust = this.particles.addEmitter({ kind: 'dust', rate: 0, position: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 0.8, z: 0 }, spread: 1.2, life: [0.8, 1.6], size: [1, 3.5] });
-      this.views.push({ rig, spec, exhaust, dust, color, autopilot: null, scrapeAcc: 0 });
+      const damage = this.particles.addEmitter({ kind: 'smoke', rate: 0, position: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 3, z: 0 }, spread: 0.6, life: [1.5, 3], size: [1.2, 4.5] });
+      this.views.push({ rig, spec, exhaust, dust, damage, fireAcc: 0, color, driver: null, scrapeAcc: 0 });
     });
   }
 
@@ -239,8 +272,7 @@ export class Game {
     try {
       this.presentation(0, 0);
       this.particles.prime();
-      if (this.pipeline) await this.pipeline.compileAsync();
-      else await this.gfx.renderer.compileAsync(this.scene, this.slots[0]!.camera.camera);
+      for (const p of this.pipelines) await p.compileAsync();
       for (let i = 0; i < 2; i++) {
         this.render();
         // Not requestAnimationFrame: it never fires in a background tab and boot would hang.
@@ -294,7 +326,8 @@ export class Game {
   private applyPixelRatio(): void {
     const pr = pixelRatioFor(window.devicePixelRatio || 1, this.dynres.tier.maxDpr, this.dynres.scale);
     this.gfx.renderer.setPixelRatio(pr);
-    this.pipeline?.updateResolution();
+    for (const p of this.pipelines) p.updateResolution();
+    this.split?.resize();
     ui.renderScale.value = this.dynres.scale;
   }
 
@@ -304,7 +337,8 @@ export class Game {
     this.gfx.renderer.setSize(w, h, false);
     const split = this.slots.length === 2;
     for (const s of this.slots) s.camera.setAspect(split ? w / (h / 2) : w / h);
-    this.pipeline?.updateResolution();
+    for (const p of this.pipelines) p.updateResolution();
+    this.split?.resize();
   };
 
   private onVisibility = () => {
@@ -320,7 +354,6 @@ export class Game {
   private simStep(): void {
     const sim = this.sim;
     const cmds: (ActionFrame | null)[] = [];
-    const maxSpeed = tunables.get('handling.maxSpeed');
     for (let i = 0; i < sim.racers.length; i++) {
       const v = this.views[i]!;
       const slot = this.slots[i];
@@ -336,15 +369,18 @@ export class Game {
           return;
         }
         const auto = tunables.get<boolean>('showcase.playerAutopilot');
-        cmds.push(auto ? drive((v.autopilot ??= createAutopilot()), sim.track, sim.pose(i), sim.racers[i]!.vehicle.gearbox, maxSpeed) : frame);
+        cmds.push(auto ? driveRacer((v.driver ??= createDriver(i, this.opts.flags.seed, 0)), sim) : frame);
       } else {
-        cmds.push(drive(v.autopilot!, sim.track, sim.pose(i), sim.racers[i]!.vehicle.gearbox, maxSpeed));
+        cmds.push(driveRacer(v.driver!, sim));
       }
     }
     sim.step(cmds);
     for (const e of sim.drainEvents()) if (e.type === 'impact' && e.impact) this.onImpact(e.racer, e.impact);
-    // All humans finished → results.
-    if (!ui.results.value && sim.racers.slice(0, this.players).every((r) => r.progress.finishedAt !== null)) this.showResults();
+    for (const e of sim.drainRuleEvents()) this.onRule(e);
+    // Every human finished, or retired (after a few seconds) → results; AI keep racing behind.
+    const wait = tunables.get<number>('hull.wreckToResults');
+    const done = sim.racers.slice(0, this.players).every((r) => r.finished || (r.rules.hull.wreckedAt !== null && sim.clock - r.rules.hull.wreckedAt >= wait));
+    if (!ui.results.value && done) this.showResults();
     this.bus.flush();
   }
 
@@ -371,11 +407,120 @@ export class Game {
     else if (hit.kind === 'vehicle') slot.camera.addShake(hit.strength * t('feedback.shakeVehicle'));
   }
 
+  /** Results table; refreshed while shown, since the AI keep racing. */
   private showResults(): void {
     ui.results.value = this.sim.standings().map((i) => {
       const r = this.sim.racers[i]!;
-      return { name: r.name, color: this.views[i]!.color, time: r.progress.finishedAt, bestLap: r.progress.bestLap, isPlayer: i < this.players };
+      return {
+        name: r.name,
+        color: this.views[i]!.color,
+        time: r.progress.finishedAt,
+        bestLap: r.progress.bestLap,
+        isPlayer: i < this.players,
+        retired: r.vehicle.wrecked && !r.finished,
+        pf: r.rules.hull.pf,
+      };
     });
+  }
+
+  /** Short message over a player's viewport (gameplay.md §9.2 outcome banners). */
+  private banner(racer: number, text: string, tone: Banner['tone']): void {
+    const slot = this.slots[racer];
+    if (!slot) return;
+    slot.banners = [...slot.banners.filter((b) => b.text !== text), { id: this.bannerId++, text, tone, until: performance.now() + 1800 }].slice(-3);
+  }
+
+  /** Feedback for the rules layer: effects, shakes, banners. */
+  private onRule(e: RuleEvent): void {
+    const sim = this.sim;
+    const t = (k: string) => tunables.get<number>(k);
+    const steam = (x: number, z: number, n: number, size: [number, number] = [1.5, 4.5]) =>
+      this.particles.burst({ kind: 'steam', rate: 0, position: { x, y: 1.5, z }, velocity: { x: 0, y: 2.2, z: 0 }, spread: 2.2, life: [1, 2.4], size }, n);
+    switch (e.type) {
+      case 'start': {
+        const r = sim.racers[e.racer]!;
+        if (e.outcome === 'perfect') this.banner(e.racer, 'PERFECT START!', 'good');
+        if (e.outcome === 'good') this.banner(e.racer, 'GOOD START', 'good');
+        if (e.outcome === 'stall') this.banner(e.racer, 'STALLED!', 'bad');
+        if (!r.rules.armed) this.banner(e.racer, `WEAPONS UNLOCK ON LAP ${t('weapons.unlockLap') + 1}`, 'info');
+        if (e.outcome === 'perfect' || e.outcome === 'good') steam(r.vehicle.curr.x, r.vehicle.curr.z, e.outcome === 'perfect' ? 14 : 7);
+        break;
+      }
+      case 'boilerTest':
+        this.banner(e.racer, e.kind === 'burst' ? 'BOILER AT BURSTING POINT!' : 'RED ZONE: PRESSURE FULL', 'warn');
+        break;
+      case 'boiler': {
+        const r = sim.racers[e.racer]!;
+        const { x, z } = r.vehicle.curr;
+        if (e.outcome === 'contained') this.banner(e.racer, 'PRESSURE CONTAINED', 'good');
+        if (e.outcome === 'emergency') this.banner(e.racer, 'EMERGENCY VALVES: −3 GEARS', 'bad');
+        if (e.outcome === 'valves') this.banner(e.racer, 'VALVES GAVE WAY', 'bad');
+        steam(x, z, e.outcome === 'contained' ? 6 : 18, [2, 6]);
+        if (e.outcome === 'explosion') {
+          this.banner(e.racer, 'BOILER EXPLODED!', 'bad');
+          this.particles.burst({ kind: 'smoke', rate: 0, position: { x, y: 1.5, z }, velocity: { x: 0, y: 4, z: 0 }, spread: 5, life: [1.5, 3.5], size: [3, 9] }, 30);
+          this.sparks.burst(x, 1.5, z, 0, 0, 0, 0, 60, 1.6);
+          const rad = t('boiler.shockRadius') * 2.5;
+          for (const s of this.slots) {
+            const p = sim.racers[s.index]!.vehicle.curr;
+            const d = Math.hypot(p.x - x, p.z - z);
+            if (d < rad) s.camera.addShake(t('feedback.shakeCrash') * (1 - d / rad) * 1.5);
+          }
+        } else this.slots[e.racer]?.camera.addShake(t('feedback.shakeCrash') * 0.4);
+        break;
+      }
+      case 'armed':
+        this.banner(e.racer, 'WEAPONS ARMED!', 'good');
+        break;
+      case 'vent':
+        steam(e.x, e.z, 10, [2, 6]);
+        break;
+      case 'damage':
+        if (e.source !== 'shot' && e.source !== 'boiler') this.banner(e.racer, `−${e.pf} PF`, 'dmg');
+        break;
+      case 'wreck': {
+        const r = sim.racers[e.racer]!;
+        this.banner(e.racer, 'WRECKED: RETIRED', 'bad');
+        this.particles.burst({ kind: 'smoke', rate: 0, position: { x: r.vehicle.curr.x, y: 1.5, z: r.vehicle.curr.z }, velocity: { x: 0, y: 4, z: 0 }, spread: 3, life: [1.5, 3], size: [2, 7] }, 20);
+        for (let i = 0; i < this.players; i++) if (i !== e.racer) this.banner(i, `${r.name.toUpperCase()} IS OUT`, 'info');
+        break;
+      }
+      case 'ram': {
+        this.sparks.burst(e.x, 0.9, e.z, 0, 0, 0, 0, 30, 1.2);
+        for (const i of [e.a, e.b]) {
+          this.slots[i]?.camera.addShake(t('feedback.shakeCrash') * 0.6);
+          const won = (e.winner > 0 && i === e.a) || (e.winner < 0 && i === e.b);
+          if (won) this.banner(i, 'RAM WON', 'good');
+        }
+        break;
+      }
+      case 'fire': {
+        const dx = e.tx - e.x;
+        const dz = e.tz - e.z;
+        const len = Math.hypot(dx, dz) || 1;
+        const ux = dx / len;
+        const uz = dz / len;
+        this.particles.burst({ kind: 'smoke', rate: 0, position: { x: e.x, y: 1.6, z: e.z }, velocity: { x: ux * 4, y: 1, z: uz * 4 }, spread: 0.8, life: [0.5, 1.2], size: [1, 3] }, 6);
+        // Tracer: a line of sparks along the shell path.
+        const n = Math.min(10, Math.ceil(len / 6));
+        for (let k = 0; k <= n; k++) this.sparks.burst(e.x + dx * (k / n), 1.5, e.z + dz * (k / n), 0, 0, -ux, -uz, k === 0 ? 8 : 2, k === 0 ? 1.4 : 0.8);
+        if (e.blocked) this.sparks.burst(e.tx, 1.2, e.tz, -ux, -uz, ux, uz, 24, 1.1);
+        else if (e.zone === 'miss')
+          this.particles.burst({ kind: 'dust', rate: 0, position: { x: e.tx, y: 0.5, z: e.tz }, velocity: { x: 0, y: 2, z: 0 }, spread: 1.5, life: [0.6, 1.2], size: [1.5, 4] }, 6);
+        if (e.blocked) this.banner(e.racer, 'BLOCKED BY THE BARRICADE', 'info');
+        else if (e.target < 0) this.banner(e.racer, 'NO TARGET', 'info');
+        this.slots[e.racer]?.camera.addShake(t('feedback.shakeHit') * 3);
+        break;
+      }
+      case 'hit': {
+        this.sparks.burst(e.x, 1.4, e.z, 0, 0, 0, 0, e.zone === 'edge' ? 10 : e.zone === 'body' ? 22 : 40, e.zone === 'centre' ? 1.5 : 1);
+        const label = { centre: 'CENTRE HIT! −1 GEAR', vital: 'VITAL HIT', body: 'HIT', edge: 'GRAZED', miss: '' }[e.zone];
+        if (label) this.banner(e.from, label, e.zone === 'edge' ? 'info' : 'good');
+        if (e.zone !== 'edge') this.banner(e.racer, `SHOT: −${e.pf} PF`, 'dmg');
+        this.slots[e.racer]?.camera.addShake(t('feedback.shakeCrash') * (e.zone === 'centre' ? 0.9 : 0.5));
+        break;
+      }
+    }
   }
 
   private frame = (timeMs: number) => {
@@ -436,6 +581,19 @@ export class Game {
       v.dust.position.z = root.position.z;
       v.dust.rate = r.vehicle.telemetry.drifting ? 30 : loose ? Math.abs(speed) * 1.2 : 0;
 
+      // Hull condition (gameplay.md §6.1): smoke under 50 %, fire under 25 %, wreck smoulders.
+      const cond = hullCondition(r.rules.hull);
+      v.damage.position.x = root.position.x;
+      v.damage.position.y = root.position.y + 2.2;
+      v.damage.position.z = root.position.z;
+      v.damage.rate = cond === 'wreck' ? 18 : cond === 'fire' ? 12 : cond === 'smoke' ? 5 : 0;
+      if ((cond === 'fire' || cond === 'wreck') && simDt > 0) {
+        v.fireAcc += (cond === 'wreck' ? 10 : 18) * simDt;
+        const n = Math.floor(v.fireAcc);
+        v.fireAcc -= n;
+        if (n > 0) this.sparks.burst(root.position.x, root.position.y + 2, root.position.z, 0, 0, 0, 0, n, 0.35);
+      }
+
       // Scraping a barricade: a continuous trail of sparks (or dust) from the contact point.
       const e = r.edge;
       const slide = Math.abs(e.slide);
@@ -482,44 +640,100 @@ export class Game {
   }
 
   private render(): void {
-    const r = this.gfx.renderer;
-    if (this.pipeline) {
-      this.pipeline.render();
+    if (this.pipelines.length === 1) {
+      this.pipelines[0]!.render();
       return;
     }
-    // Split screen (PC): direct render per viewport, no post chain yet (doc 03 §10.4, M3).
-    const w = window.innerWidth;
-    const h = window.innerHeight / 2;
-    r.setScissorTest(true);
-    this.slots.forEach((s, i) => {
-      r.setViewport(0, i * h, w, h);
-      r.setScissor(0, i * h, w, h);
-      r.render(this.scene, s.camera.camera);
-    });
-    r.setScissorTest(false);
+    // Split screen (PC, doc 03 §10.4): each player's full ink chain into its half (render/split.ts).
+    this.split?.render();
   }
 
-  /** Placeholder boiler readout (M3: real boiler component). */
+  /** Boiler readout for the steam pips (rules/boiler.ts). */
   private steamOf(g: GearboxState): SteamReadout {
-    return { pv: g.pv, cal: tunables.get('boiler.cal'), regen: g.pvRegen, usable: canPush(g) };
+    return { pv: g.boiler.pv, cal: boilerCal(g.boiler), regen: g.boiler.regen, usable: canPush(g) };
   }
 
-  /** Gear + steam pips pinned just behind (= below on screen) each player's vehicle. */
-  private updateTags(): void {
+  /** Page rectangle of a player's viewport (split: slot 0 is the top half). */
+  private viewportOf(index: number): ViewportRect {
     const w = window.innerWidth;
     const h = window.innerHeight;
     const split = this.slots.length === 2;
+    const vh = split ? h / 2 : h;
+    return { left: 0, top: split ? index * vh : 0, width: w, height: vh };
+  }
+
+  /** World point → page pixels in a player's viewport; null when behind the camera. */
+  private toScreen(slot: PlayerSlot, x: number, y: number, z: number, vp: ViewportRect): { x: number; y: number } | null {
+    const v = this.tmp2.set(x, y, z).project(slot.camera.camera);
+    if (v.z > 1) return null;
+    return { x: vp.left + (v.x * 0.5 + 0.5) * vp.width, y: vp.top + (-v.y * 0.5 + 0.5) * vp.height };
+  }
+
+  /** Centre prompts of one player (start test, boiler test, reticle, under fire). */
+  private gaugeFrame(s: PlayerSlot, vp: ViewportRect): GaugeFrame | null {
+    const sim = this.sim;
+    const r = sim.racers[s.index]!;
+    if (this.loop.paused || ui.loading.value || ui.results.value || r.vehicle.wrecked) return null;
+    const rr = r.rules;
+    const st = rr.start;
+    const start =
+      sim.phase === 'countdown' ? { needle: st.needle, lo: st.lo, hi: st.hi, tol: st.tol, red: tunables.get<number>('start.redLine') } : null;
+    const bt = rr.boiler.test;
+    const boiler = bt ? { needle: bt.needle, notch: bt.notch, half: bt.half, kind: bt.kind } : null;
+    let reticle: GaugeFrame['reticle'] = null;
+    const c = rr.cannon;
+    if (c.target >= 0 && sim.phase !== 'countdown' && !r.finished) {
+      const tr = this.views[c.target]!.rig.root.position;
+      const tv = sim.racers[c.target]!.vehicle;
+      const p = this.toScreen(s, tr.x, tr.y + 1.2, tr.z, vp);
+      if (p) {
+        const half = coneHalfAngle({
+          shooterGear: r.vehicle.gearbox.gear,
+          targetGear: tv.gearbox.gear,
+          steer: Math.abs(r.vehicle.gearbox.steer),
+          steady: c.steady,
+          sinceManoeuvre: c.sinceManoeuvre,
+          throughCloud: sim.rules.cloudBetween(r.vehicle.curr.x, r.vehicle.curr.z, tv.curr.x, tv.curr.z),
+        });
+        const dist = Math.hypot(tv.curr.x - r.vehicle.curr.x, tv.curr.z - r.vehicle.curr.z);
+        const lateral = dist * Math.tan((half * Math.PI) / 180) + tunables.get<number>('weapons.cone.wobble') * 0.5;
+        this.tmp.setFromMatrixColumn(s.camera.camera.matrixWorld, 0).multiplyScalar(lateral);
+        const q = this.toScreen(s, tr.x + this.tmp.x, tr.y + 1.2 + this.tmp.y, tr.z + this.tmp.z, vp);
+        reticle = { x: p.x, y: p.y, r: q ? Math.hypot(q.x - p.x, q.y - p.y) : 20, locked: isLocked(c) };
+      }
+    }
+    // Under fire: a rival has locked this player.
+    let underFire: number | null = null;
+    const me = this.views[s.index]!.rig.root.position;
+    const calm = sim.clock < tunables.get<number>('start.calmTime');
+    for (const o of sim.racers) {
+      if (calm || r.finished) break;
+      if (o === r || o.vehicle.wrecked || !o.rules.armed || o.rules.cannon.target !== s.index || !isLocked(o.rules.cannon)) continue;
+      const a = this.toScreen(s, me.x, me.y, me.z, vp);
+      const op = o.vehicle.curr;
+      const b = this.toScreen(s, op.x, me.y, op.z, vp);
+      underFire = a && b ? Math.atan2(b.x - a.x, -(b.y - a.y)) : Math.PI;
+      break;
+    }
+    return { vp, start, boiler, reticle, underFire };
+  }
+
+  /** Gear + steam pips pinned just behind (= below on screen) each player's vehicle; gauges; minimap. */
+  private updateTags(): void {
     const back = tunables.get('hud.tagOffset');
     const followRival = tunables.get<string>('showcase.cameraTarget') === 'rival' && this.sim.racers.length > this.players;
+    this.minimap?.update(
+      this.sim.racers.map((r, i) => ({ x: r.vehicle.curr.x, z: r.vehicle.curr.z, color: this.views[i]!.color, player: i < this.players, wrecked: r.vehicle.wrecked })),
+      !ui.loading.value,
+    );
     for (const s of this.slots) {
-      const vh = split ? h / 2 : h;
-      // Split viewports: slot 0 is rendered in the top half (renderer viewports are top-left based).
-      const vp = { left: 0, top: split ? s.index * vh : 0, width: w, height: vh };
+      const vp = this.viewportOf(s.index);
+      s.gauges.update(this.gaugeFrame(s, vp));
       const r = this.sim.racers[s.index]!;
       const root = this.views[s.index]!.rig.root;
       const yaw = r.vehicle.heading();
       const anchor = { x: root.position.x - Math.sin(yaw) * back, y: root.position.y, z: root.position.z - Math.cos(yaw) * back };
-      const visible = !this.loop.paused && !(followRival && s.index === 0) && !ui.loading.value && tunables.get<boolean>('hud.vehicleTag');
+      const visible = !this.loop.paused && !(followRival && s.index === 0) && !ui.loading.value && !r.vehicle.wrecked && tunables.get<boolean>('hud.vehicleTag');
       s.tag.update(anchor, s.camera.camera, vp, r.vehicle.gearbox.gear, this.steamOf(r.vehicle.gearbox), visible);
     }
   }
@@ -538,11 +752,24 @@ export class Game {
     const order = sim.standings();
     ui.phase.value = sim.phase;
     ui.countdown.value = sim.phase === 'countdown' ? Math.ceil(-sim.clock) : 0;
-    ui.standings.value = order.map((i) => ({ name: sim.racers[i]!.name, color: this.views[i]!.color, isPlayer: i < this.players }));
+    ui.standings.value = order.map((i) => ({ name: sim.racers[i]!.name, color: this.views[i]!.color, isPlayer: i < this.players, retired: sim.racers[i]!.vehicle.wrecked && !sim.racers[i]!.finished }));
+    if (ui.results.value) this.showResults();
+    const now = performance.now();
     ui.players.value = this.slots.map((s) => {
       const r = sim.racers[s.index]!;
       const p = r.progress;
+      const rr = r.rules;
+      s.banners = s.banners.filter((b) => b.until > now);
       return {
+        pf: rr.hull.pf,
+        pfMax: rr.hull.max,
+        condition: hullCondition(rr.hull),
+        ammo: rr.cannon.ammo,
+        cannonReady: rr.armed && rr.cannon.cooldown === 0 && rr.cannon.ammo > 0 && sim.clock >= tunables.get<number>('start.calmTime'),
+        armed: rr.armed,
+        unlockLap: tunables.get<number>('weapons.unlockLap'),
+        boiler: { pv: rr.boiler.pv, cal: boilerCal(rr.boiler), pressure: rr.boiler.pressure, test: rr.boiler.test !== null },
+        banners: s.banners,
         index: s.index,
         gear: r.vehicle.gearbox.gear,
         speedKmh: Math.round(Math.abs(r.vehicle.telemetry.forwardSpeed) * 3.6),
@@ -581,7 +808,13 @@ export class Game {
         return {
           gear: r.vehicle.gearbox.gear,
           pushCooldown: r.vehicle.gearbox.pushCooldown,
-          pv: r.vehicle.gearbox.pv,
+          pv: r.vehicle.gearbox.boiler.pv,
+          pf: r.rules.hull.pf,
+          ammo: r.rules.cannon.ammo,
+          armed: r.rules.armed,
+          wrecked: r.vehicle.wrecked,
+          start: r.rules.startOutcome,
+          boilerTest: r.rules.boiler.test?.kind ?? null,
           speed: r.vehicle.telemetry.forwardSpeed,
           x: r.vehicle.curr.x,
           z: r.vehicle.curr.z,

@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { RaceSim, initPhysics, type ImpactInfo } from '../../src/sim/race-sim';
 import { HOT_ROD, STEAM_TANK } from '../../src/vehicles/vehicle-physics';
 import { emptyFrame, type ActionFrame } from '../../src/input/actions';
@@ -6,6 +6,15 @@ import { BARRICADES, barricadeParams, classifyImpact, speedAfterHit } from '../.
 import { tunables } from '../../src/core/tunables';
 import type { Barricade, TrackFile } from '../../src/track/track-format';
 import foundry from '../../src/tracks/foundry-01.json';
+
+// Edge handling only (M2): no start stall, no calm time after GO, hulls that never wreck.
+const M2_ONLY = { 'start.stall': 0, 'start.calmTime': 0, 'stats.hotrod.pf': 60, 'stats.tank.pf': 60 };
+beforeAll(() => {
+  tunables.applyPreset(M2_ONLY);
+});
+afterAll(() => {
+  for (const k of Object.keys(M2_ONLY)) tunables.reset(k);
+});
 
 beforeAll(async () => {
   await initPhysics();

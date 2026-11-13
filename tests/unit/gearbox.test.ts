@@ -27,25 +27,37 @@ describe('gearbox (gameplay.md §5.1)', () => {
     expect(stepGearbox(g, push, DT, 0, 30).pushed).toBe(false);
     for (let i = 0; i < 20; i++) {
       for (let k = 0; k < 90; k++) stepGearbox(g, frame(), DT, 0, 30);
+      g.boiler.pv = 5; // the race rules refill the boiler; here only the gearbox runs
       stepGearbox(g, push, DT, 0, 30);
     }
     expect(g.gear).toBe(6);
   });
 
-  it('placeholder boiler: push costs PV, no push without steam, PV regenerate up to CAL', () => {
+  it('boiler: push costs PV, no push without steam or during the calm time', () => {
     const g = createGearbox();
-    g.pv = 1;
+    g.boiler.pv = 1;
     const push = frame((f) => (f.pressed.steamPush = true));
     stepGearbox(g, push, DT, 0, 30);
     expect(g.gear).toBe(2);
-    expect(g.pv).toBe(0);
+    expect(g.boiler.pv).toBe(0);
     g.pushCooldown = 0;
     expect(stepGearbox(g, push, DT, 0, 30).pushed).toBe(false); // no steam
     expect(g.gear).toBe(2);
-    const steps = (tunables.get<number>('boiler.regenTime') * tunables.get<number>('boiler.cal') + 1) * 60;
-    for (let k = 0; k < steps; k++) stepGearbox(g, frame(), DT, 0, 30);
-    expect(g.pv).toBe(tunables.get('boiler.cal'));
-    expect(g.pvRegen).toBe(0);
+    g.boiler.pv = 3;
+    g.noPush = 1;
+    expect(stepGearbox(g, push, DT, 0, 30).pushed).toBe(false); // calm time after GO
+  });
+
+  it('downshifting from 4th up gives 1 PV back; red zone pushes are stronger', () => {
+    const g = createGearbox();
+    g.gear = 4;
+    g.boiler.pv = 0;
+    stepGearbox(g, frame((f) => (f.pressed.gearDown = true)), DT, 0, 30);
+    expect(g.gear).toBe(3);
+    expect(g.boiler.pv).toBe(tunables.get('boiler.downshiftRefund'));
+    g.boiler.pv = g.boiler.baseCal + 2;
+    stepGearbox(g, frame((f) => (f.pressed.steamPush = true)), DT, 0, 30);
+    expect(g.pushBoost).toBe(tunables.get('boiler.redPushBonus'));
   });
 
   it('push gives extra acceleration for its duration only', () => {

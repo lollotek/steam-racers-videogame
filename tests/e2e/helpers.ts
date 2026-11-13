@@ -9,7 +9,7 @@ export interface Snapshot {
   particles: number;
   phase: 'countdown' | 'running' | 'finished';
   clock: number;
-  players: { gear: number; pushCooldown: number; lap: number; distance: number; speed: number; heading: number; device: string; input: string }[];
+  players: { gear: number; pushCooldown: number; pv: number; pf: number; ammo: number; wrecked: boolean; start: string | null; boilerTest: string | null; lap: number; distance: number; speed: number; heading: number; device: string; input: string }[];
 }
 
 export async function snapshot(page: Page): Promise<Snapshot> {
@@ -28,6 +28,8 @@ export async function boot(page: Page, query = ''): Promise<string[]> {
   await expect.poll(async () => (await snapshot(page)).frames, { timeout: 90_000 }).toBeGreaterThan(30);
   // Gears are frozen during the countdown (doc 03 §14): wait for GO.
   await expect.poll(async () => (await snapshot(page)).phase, { timeout: 90_000 }).toBe('running');
+  // M3: no pushes during the calm time after GO (plus a possible start stall, gameplay.md §4).
+  await expect.poll(async () => (await snapshot(page)).clock, { timeout: 90_000 }).toBeGreaterThan(4.2);
   return errors;
 }
 

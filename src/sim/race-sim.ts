@@ -12,6 +12,8 @@ import { GROUND_GROUPS, PhysicsVehicle, WALL_GROUPS, type VehicleSpec } from '..
 import { createProgress, standings, updateProgress, type RacerProgress } from '../race/progress';
 import { barricadeParams, classifyImpact, speedAfterHit } from '../race/barricades';
 import type { Barricade } from '../track/track-format';
+import { RaceRules, createRacerRules, type RacerRules, type RuleEvent } from './race-rules';
+import { type StatsId, vehicleStats } from '../rules/stats';
 
 export const SIM_STEP = 1 / 60;
 
@@ -34,6 +36,8 @@ export type RacePhase = 'countdown' | 'running' | 'finished';
 export interface RacerConfig {
   spec: VehicleSpec;
   name: string;
+  /** Tabletop characteristics (gameplay.md §3.1); default from the spec. */
+  stats?: StatsId;
 }
 
 export interface Racer {
@@ -47,6 +51,10 @@ export interface Racer {
   /** Horizontal velocity before the physics step (impact detection). */
   preVx: number;
   preVz: number;
+  /** Rules state: boiler, hull, cannon, start test (sim/race-rules.ts). */
+  rules: RacerRules;
+  /** Crossed the line: no more damage. */
+  finished: boolean;
 }
 
 /** Contact with the track edge (the invisible rail, see race/barricades.ts). */
@@ -106,9 +114,10 @@ export class RaceSim {
   clock: number;
   steps = 0;
   readonly events: SimEvent[] = [];
+  readonly rules: RaceRules;
   private idle = emptyFrame();
 
-  constructor(file: TrackFile, racers: RacerConfig[]) {
+  constructor(file: TrackFile, racers: RacerConfig[], seed = 1) {
     this.track = compileTrack(file);
     this.world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
     this.world.timestep = SIM_STEP;
@@ -116,10 +125,13 @@ export class RaceSim {
     this.buildStatic();
     racers.forEach((cfg, i) => {
       const slot = this.track.spawn[i % this.track.spawn.length]!;
-      const vehicle = new PhysicsVehicle(RAPIER, this.world, cfg.spec, slot);
+      const stats = vehicleStats(cfg.stats ?? (cfg.spec.half.x > 1.2 ? 'tank' : 'hotrod'));
+      const rules = createRacerRules(stats, i === 0);
+      const vehicle = new PhysicsVehicle(RAPIER, this.world, cfg.spec, slot, rules.boiler);
       const edge: EdgeState = { contact: false, side: 1, barricade: file.defaultBarricade, time: 0, tick: 0, away: 99, slide: 0, x: 0, z: 0, nx: 0, nz: 0 };
-      this.racers.push({ index: i, name: cfg.name, vehicle, progress: createProgress(this.track, slot.x, slot.z), outOfBounds: 0, edge, preVx: 0, preVz: 0 });
+      this.racers.push({ index: i, name: cfg.name, vehicle, progress: createProgress(this.track, slot.x, slot.z), outOfBounds: 0, edge, preVx: 0, preVz: 0, rules, finished: false });
     });
+    this.rules = new RaceRules(seed, this.racers, this.world, this.track);
   }
 
   /**
@@ -175,7 +187,9 @@ export class RaceSim {
     const locked = this.phase === 'countdown';
     for (const r of this.racers) {
       const cmd = commands[r.index] ?? this.idle;
-      if (cmd.pressed.reposition) this.reposition(r);
+      if (locked) this.rules.countdownStep(r, cmd, dt, -this.clock);
+      else this.rules.preStep(r, cmd, dt, this.clock);
+      if (cmd.pressed.reposition && !r.vehicle.wrecked) this.reposition(r);
       r.vehicle.preStep(cmd, dt, this.surfaceAt, locked);
       const v = r.vehicle.body.linvel();
       r.preVx = v.x;
@@ -187,6 +201,7 @@ export class RaceSim {
     if (this.phase === 'countdown' && this.clock >= 0) {
       this.phase = 'running';
       this.events.push({ type: 'go', racer: -1, time: 0 });
+      this.rules.go();
     }
     for (const r of this.racers) {
       r.vehicle.postStep();
@@ -195,8 +210,12 @@ export class RaceSim {
       const smp = this.track.samples[r.progress.index]!;
       const along = v.x * smp.tx + v.z * smp.tz;
       const ev = updateProgress(this.track, r.progress, p.x, p.z, along, this.clock, dt, this.track.file.laps, running);
-      if (ev.lapCompleted) this.events.push({ type: 'lap', racer: r.index, time: this.clock });
+      if (ev.lapCompleted) {
+        this.events.push({ type: 'lap', racer: r.index, time: this.clock });
+        this.rules.lapCompleted(r);
+      }
       if (ev.finished) this.events.push({ type: 'finish', racer: r.index, time: this.clock });
+      r.finished = r.progress.finishedAt !== null;
       // Anything that changed the velocity abruptly inside the physics step is an impact (other cars).
       const dv = Math.hypot(v.x - r.preVx, v.z - r.preVz);
       if (dv > tunables.get('race.impactMinSpeed')) {
@@ -204,10 +223,13 @@ export class RaceSim {
         this.events.push({ type: 'impact', racer: r.index, time: this.clock, impact: { kind: 'vehicle', barricade: null, strength: dv, x: p.x, z: p.z, nx: (v.x - r.preVx) * k, nz: (v.z - r.preVz) * k } });
       }
       this.applyRail(r, dt);
+      this.rules.edgeContact(r, r.edge.barricade, r.edge.contact, dt, this.clock);
       r.outOfBounds = Math.abs(r.progress.lateral) > this.track.halfWidth + 2 ? r.outOfBounds + dt : 0;
-      if (r.vehicle.troubleTime > tunables.get('race.autoReposition') || p.y < -5 || r.outOfBounds > 1) this.reposition(r);
+      const stuck = r.vehicle.troubleTime > tunables.get('race.autoReposition') || p.y < -5 || r.outOfBounds > 1;
+      if (stuck && (!r.vehicle.wrecked || p.y < -5)) this.reposition(r);
     }
-    if (this.phase === 'running' && this.racers.every((r) => r.progress.finishedAt !== null)) this.phase = 'finished';
+    this.rules.postStep(dt, this.clock);
+    if (this.phase === 'running' && this.racers.every((r) => r.finished || r.vehicle.wrecked)) this.phase = 'finished';
   }
 
   /**
@@ -271,12 +293,14 @@ export class RaceSim {
     if (kind === 'crash') {
       // Frontal impact: full stop, small rebound off the edge, restart in 1st gear.
       impact('crash', vn);
+      this.rules.edgeImpact(r, type, 'crash', this.clock);
       v.crash(tunables.get('barricades.crashStun'));
       vt = 0;
       vn = -1.5;
     } else {
       if (kind === 'hit') {
         impact('hit', vn);
+        this.rules.edgeImpact(r, type, 'hit', this.clock);
         vt = speedAfterHit(vn, vt, prm);
         if (prm.gearLoss > 0) v.gearbox.gear = Math.max(1, v.gearbox.gear - prm.gearLoss);
       }
@@ -316,8 +340,14 @@ export class RaceSim {
     this.events.push({ type: 'reposition', racer: r.index, time: this.clock });
   }
 
+  /** Race order; wrecks (retired) go last, the latest wreck first. */
   standings(): number[] {
-    return standings(this.racers.map((r) => r.progress));
+    const order = standings(this.racers.map((r) => r.progress));
+    const alive = order.filter((i) => !this.racers[i]!.vehicle.wrecked || this.racers[i]!.finished);
+    const wrecks = order
+      .filter((i) => this.racers[i]!.vehicle.wrecked && !this.racers[i]!.finished)
+      .sort((a, b) => (this.racers[b]!.rules.hull.wreckedAt ?? 0) - (this.racers[a]!.rules.hull.wreckedAt ?? 0));
+    return [...alive, ...wrecks];
   }
 
   /** Pose for the autopilot. */
@@ -328,6 +358,10 @@ export class RaceSim {
 
   drainEvents(): SimEvent[] {
     return this.events.splice(0);
+  }
+
+  drainRuleEvents(): RuleEvent[] {
+    return this.rules.events.splice(0);
   }
 
   dispose(): void {

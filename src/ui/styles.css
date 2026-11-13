@@ -1,4 +1,5 @@
 :root {
+  --minimap: 124px;
   --ink: #1b1210;
   --shadow: #2b1f22;
   --iron-dark: #3a3330;
@@ -128,7 +129,7 @@ body {
 .leaderboard {
   position: absolute;
   right: max(12px, env(safe-area-inset-right));
-  top: max(10px, env(safe-area-inset-top));
+  top: calc(max(10px, env(safe-area-inset-top)) + var(--minimap) + 8px);
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -491,4 +492,388 @@ body {
   bottom: 8px;
   z-index: 20;
   pointer-events: none;
+}
+
+/* M3 HUD strip: hull, cannon, boiler (gameplay.md §9.2) */
+.strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+.hull,
+.boiler,
+.ammo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  background: rgba(27, 18, 16, 0.6);
+  border: 2px solid var(--iron-dark);
+  border-radius: 4px;
+}
+.hull-bar {
+  position: relative;
+  width: 90px;
+  height: 10px;
+  background: var(--iron-dark);
+  border: 2px solid var(--ink);
+}
+.hull-fill {
+  height: 100%;
+  background: #8fbf5a;
+}
+.hull.smoke .hull-fill {
+  background: var(--fire);
+}
+.hull.fire .hull-fill,
+.hull.wreck .hull-fill {
+  background: var(--pip-red);
+}
+.hull.fire {
+  animation: blink 0.5s steps(2) infinite;
+}
+.hull-num,
+.ammo-count,
+.boiler-num {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+.ammo .ammo-count {
+  color: var(--pip-grey);
+}
+.ammo.ready .ammo-count {
+  color: var(--fire-core);
+}
+.boiler-gauge {
+  position: relative;
+  display: flex;
+  gap: 2px;
+  padding-bottom: 4px;
+}
+.boiler-gauge .cell {
+  width: 9px;
+  height: 11px;
+  border: 2px solid var(--ink);
+  background: rgba(90, 81, 75, 0.6);
+}
+.boiler-gauge .cell.over {
+  background: rgba(120, 30, 20, 0.55);
+}
+.boiler-gauge .cell.full {
+  background: var(--fire);
+}
+.boiler-gauge .cell.over.full {
+  background: var(--pip-red);
+  box-shadow: 0 0 4px var(--pip-red);
+}
+.boiler-gauge .pressure {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  height: 3px;
+  background: var(--pip-red);
+}
+.boiler.red {
+  border-color: #9b1d12;
+}
+.boiler.testing {
+  border-color: var(--pip-red);
+  animation: blink 0.3s steps(2) infinite;
+}
+@keyframes blink {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* Outcome banners, centre of the player's viewport */
+.banners {
+  position: fixed;
+  left: 50%;
+  top: 20%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+}
+.split .hud.p-top .banners {
+  top: 8%;
+}
+.split .hud.p-bottom .banners {
+  top: 58%;
+}
+.banner {
+  padding: 4px 14px;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  white-space: nowrap;
+  background: rgba(27, 18, 16, 0.7);
+  border: 2px solid var(--brass);
+  border-radius: 4px;
+  animation: banner-in 0.18s ease-out;
+}
+.banner.good {
+  color: var(--fire-core);
+}
+.banner.bad {
+  color: #ff5a3a;
+  border-color: #c8401a;
+}
+.banner.warn {
+  color: var(--pip-red);
+  border-color: var(--pip-red);
+}
+.banner.dmg {
+  font-size: 15px;
+  color: #ff8a6a;
+  border-color: var(--iron);
+}
+.banner.info {
+  font-size: 15px;
+  color: var(--steam);
+  border-color: var(--iron);
+}
+@keyframes banner-in {
+  from {
+    transform: scale(1.4);
+    opacity: 0;
+  }
+}
+
+.leaderboard .row.retired .name,
+.results tr.retired .name {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+
+/* Minimap (src/ui/minimap.ts) */
+.minimap {
+  position: fixed;
+  right: max(12px, env(safe-area-inset-right));
+  top: max(10px, env(safe-area-inset-top));
+  width: var(--minimap);
+  height: var(--minimap);
+  background: rgba(27, 18, 16, 0.55);
+  border: 2px solid var(--iron-dark);
+  border-radius: 6px;
+  pointer-events: none;
+}
+.split ~ .minimap,
+body:has(.ui-root.split) .minimap {
+  top: calc(50% - var(--minimap) / 2);
+}
+.mm-edge,
+.mm-road {
+  fill: none;
+  stroke-linejoin: round;
+}
+.mm-edge {
+  stroke: var(--ink);
+}
+.mm-road {
+  stroke: var(--iron);
+}
+.mm-start {
+  fill: var(--steam);
+  stroke: var(--ink);
+  stroke-width: 0.8;
+}
+.mm-dot circle {
+  fill: var(--c);
+  stroke: var(--ink);
+  stroke-width: 1.2;
+}
+.mm-dot path {
+  display: none;
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+.mm-dot.player circle {
+  r: 4.2;
+  stroke: var(--fire-core);
+  stroke-width: 1.6;
+}
+.mm-dot.wreck circle {
+  fill: var(--pip-grey);
+}
+.mm-dot.wreck path {
+  display: inline;
+}
+
+/* Centre prompts (src/ui/gauges.ts) */
+.gauges {
+  position: fixed;
+  pointer-events: none;
+}
+.meter {
+  position: absolute;
+  left: 50%;
+  top: 74%;
+  width: min(360px, 60%);
+  transform: translateX(-50%);
+  padding: 6px 10px 8px;
+  background: rgba(27, 18, 16, 0.72);
+  border: 2px solid var(--brass);
+  border-radius: 6px;
+  text-align: center;
+}
+.boiler-meter {
+  top: 74%;
+  border-color: var(--pip-red);
+}
+.boiler-meter.burst {
+  animation: blink 0.25s steps(2) infinite;
+}
+.meter-label {
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  margin-bottom: 4px;
+}
+.boiler-meter .meter-label {
+  color: var(--pip-red);
+}
+.meter-track {
+  position: relative;
+  height: 16px;
+  background: var(--iron-dark);
+  border: 2px solid var(--ink);
+}
+.meter-band,
+.meter-tol,
+.meter-red {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+.meter-band {
+  background: #6fbf4a;
+}
+.meter-tol {
+  background: rgba(111, 191, 74, 0.45);
+}
+.meter-red {
+  right: 0;
+  background: var(--pip-red);
+}
+.meter-needle {
+  position: absolute;
+  top: -5px;
+  bottom: -5px;
+  width: 4px;
+  margin-left: -2px;
+  background: var(--steam);
+  box-shadow: 0 0 0 1px var(--ink);
+}
+.start-meter.in .meter-needle {
+  background: var(--fire-core);
+}
+.reticle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border: 2px dashed rgba(255, 210, 122, 0.7);
+  border-radius: 50%;
+  will-change: transform;
+}
+.reticle.locked {
+  border: 3px solid var(--fire);
+  box-shadow: 0 0 6px var(--fire);
+}
+.under-fire {
+  --angle: 0rad;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+}
+.under-fire-arrow {
+  position: absolute;
+  left: -14px;
+  top: -14px;
+  width: 28px;
+  height: 28px;
+  transform: rotate(var(--angle)) translateY(-120px);
+  background: var(--pip-red);
+  clip-path: polygon(50% 0, 100% 100%, 50% 72%, 0 100%);
+}
+.under-fire-label {
+  position: absolute;
+  left: 0;
+  top: -150px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: var(--pip-red);
+  text-shadow: 0 1px 0 var(--ink);
+  animation: blink 0.4s steps(2) infinite;
+}
+@media (max-height: 480px) {
+  :root {
+    --minimap: 92px;
+  }
+  .banner {
+    font-size: 15px;
+  }
+  .strip {
+    gap: 6px;
+  }
+  .hull-bar {
+    width: 60px;
+  }
+}
+
+.ammo.locked .ammo-count {
+  font-size: 11px;
+  color: var(--pip-grey);
+}
+
+/* Pause: controls reference (src/ui/Controls.tsx) */
+.panel.pause {
+  max-width: min(760px, 94vw);
+  max-height: 92vh;
+  overflow-y: auto;
+}
+.controls {
+  border-collapse: collapse;
+  margin: 6px auto 10px;
+  font-size: 13px;
+  text-align: left;
+}
+.controls th {
+  padding: 4px 10px;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--brass);
+  text-transform: uppercase;
+}
+.controls td {
+  padding: 3px 10px;
+  border-top: 1px solid var(--iron-dark);
+  font-weight: 700;
+}
+.controls td.action {
+  color: var(--fire-core);
+}
+.controls .hint {
+  font-weight: 400;
+  color: var(--steam);
+  opacity: 0.6;
+}
+@media (max-height: 480px) {
+  .controls {
+    font-size: 11px;
+  }
+  .controls td {
+    padding: 2px 6px;
+  }
 }

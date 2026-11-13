@@ -4,6 +4,14 @@
  * (consistent with the camera: steering right turns the view right).
  */
 import type { Barricade, Piece, Surface, TrackFile } from './track-format';
+import { tunables } from '../core/tunables';
+
+tunables.registerGroup('race', [
+  { key: 'race.gridFirst', type: 'number', default: 6, min: 2, max: 30, step: 0.5, unit: 'm', label: 'Grid: pole behind the line' },
+  { key: 'race.gridRowGap', type: 'number', default: 14, min: 6, max: 30, step: 0.5, unit: 'm', label: 'Grid: distance between rows' },
+  { key: 'race.gridStagger', type: 'number', default: 7, min: 0, max: 15, step: 0.5, unit: 'm', label: 'Grid: left column offset back' },
+  { key: 'race.gridLateral', type: 'number', default: 0.5, min: 0.2, max: 0.7, step: 0.01, label: 'Grid: columns from centre (× half width)' },
+]);
 
 export interface TrackSample {
   x: number;
@@ -172,16 +180,19 @@ export function compileTrack(file: TrackFile, spacing = 1): CompiledTrack {
   const startLen = (file.pieces[0]!.size ?? 1) * cell * scale;
   const lineS = Math.max(4, startLen - 4);
   const track0 = { samples, length: realLength } as CompiledTrack;
-  // Spawn grid: 2 columns, staggered rows behind the line, inside the start piece.
+  // Spawn grid: 2 columns, staggered rows behind the line (spaced so the start is not a pile-up;
+  // back rows follow the centre line into the previous pieces).
   const spawn: SpawnSlot[] = [];
+  const g = (k: string) => tunables.get<number>(k);
   for (let i = 0; i < 8; i++) {
     const row = Math.floor(i / 2);
     const side = i % 2 === 0 ? 1 : -1; // pole on the right (driver's view)
-    const sp = sampleAt(track0, lineS - 6 - row * 8 - (side < 0 ? 4 : 0));
+    const sp = sampleAt(track0, lineS - g('race.gridFirst') - row * g('race.gridRowGap') - (side < 0 ? g('race.gridStagger') : 0));
     // Driver's right of the tangent heading.
     const h = Math.atan2(sp.tx, sp.tz);
     const r = right(h);
-    spawn.push({ x: sp.x + r.x * halfWidth * 0.42 * side, z: sp.z + r.z * halfWidth * 0.42 * side, heading: h });
+    const lat = halfWidth * g('race.gridLateral') * side;
+    spawn.push({ x: sp.x + r.x * lat, z: sp.z + r.z * lat, heading: h });
   }
 
   const xs = samples.map((p) => p.x);

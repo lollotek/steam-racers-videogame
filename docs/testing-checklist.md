@@ -84,7 +84,7 @@ Goal (doc 03 §18): fun to drive 3 laps alone on desktop and phone. Rivals are a
 
 ## Driver feedback — gear + steam under the vehicle
 
-Placeholder boiler until M3 (tunables group `boiler`: CAL 5, start 3 PV, 1 PV every 1.5 s, push costs 1 PV).
+Fed by the real boiler since M3 (rules/boiler.ts; CAL per vehicle in `stats.*`, ignition 2 PV, 1 PV every 1.5 s below CAL).
 
 - [ ] Under the player's vehicle: brass gear number on the left, then CAL steam squares. Lit orange = spendable; grey = push cooling down; dark = empty, the next one fills up grey while it regenerates.
 - [ ] With 0 PV the push does not fire and the gear does not change.
@@ -93,3 +93,35 @@ Placeholder boiler until M3 (tunables group `boiler`: CAL 5, start 3 PV, 1 PV ev
 - [ ] Touch: the STEAM button perimeter shows the same squares as arcs; the button border/label dims while the push is not usable.
 - [ ] `?players=2`: each player has its own tag under its own vehicle.
 - [ ] `hud.vehicleTag` (debug) hides the tag; `hud.tagOffset` moves it.
+
+## M3 — Race vertical slice
+
+Goal (doc 03 §18): complete 3-lap race vs 3 AI at target FPS on both device classes. Values are placeholders (doc 03 §19, A7): tune them in `?debug` (groups `stats`, `start`, `boiler`, `hull`, `weapons`, `ai`) and check with `npx tsx tools/sim/run.ts --preset file.json --seed N`.
+
+### PC
+
+- [ ] Countdown: the start meter appears; holding ↑ raises the needle, releasing lowers it. Keeping it in the green → PERFECT START (3rd gear + long push); partly → GOOD START (2nd); never touching ↑ or holding it into the red → STALLED.
+- [ ] Grid: cars spaced enough that the start is not a pile-up.
+- [ ] For ~2.5 s after GO nobody pushes. Weapons are locked during lap 1 (HUD "CANNON LOCKED · LAP 2", banner at GO); at the end of lap 1 "WEAPONS ARMED!" appears, for the AI too.
+- [ ] Boiler box in the HUD: 2 × CAL cells, right half red; the vehicle tag pips match it. Hoarding steam above CAL fills the pressure bar; when full, "VENT ON THE GREEN!" appears: Right Shift on the green notch → PRESSURE CONTAINED; missed → EMERGENCY VALVES (−3 gears, 1 PF). At 2 × CAL: valves give (hard brake, 2 PF) or BOILER EXPLODED (stall, CAL −2, half PF, shock wave pushes nearby cars).
+- [ ] Right Shift outside a test vents 1 PV and leaves a steam cloud.
+- [ ] Downshifting from 4th up gives 1 PV back.
+- [ ] Hull box: PF bar, orange under 50 % (engine smokes), red and flashing under 25 % (fire sparks). Edge hits cost PF per barricade (riveted/corrugated on hits, hedgehogs more and while scraping, barbed wire never).
+- [ ] Ramming a rival nose-first at speed: sparks, RAM WON for the winner, both usually lose PF; side contacts at speed cost 1 PF each.
+- [ ] Cannon: a reticle appears on the rival ahead (dashed = locking, solid = locked; its size is the cone). Right Ctrl / `.` fires: tracer, CENTRE HIT / VITAL HIT / HIT / GRAZED banners, shells counter goes down (+1 per lap). Steering, high gears and vent clouds make the reticle bigger.
+- [ ] A rival locking you shows UNDER FIRE with an arrow towards it.
+- [ ] Barricades block shots: no lock and no hits across the inside of a curve; a shell that clips a barricade sparks on it ("BLOCKED BY THE BARRICADE").
+- [ ] Pause (Esc / P / Start / II): the controls table (keyboard, P2 in split screen, gamepad, touch on phones).
+- [ ] Wreck at 0 PF: stops on the track as an obstacle, struck out in the leaderboard; if it is you, results after ~3 s with RETIRED.
+- [ ] AI: they start (mostly well), overtake around slower cars, shoot, vent; a full race ends with 4 results (some may be retired).
+- [ ] Minimap top right: track outline, one dot per racer in its colour, yours ringed, wrecks crossed out.
+- [ ] Results update while the AI finish; Enter restarts.
+- [ ] `?players=2`: both halves rendered with the ink look (outlines, hatching), each with its own HUD, start meter, boiler test and reticle; minimap centred on the right; ≥ 60 fps on the reference PC.
+- [ ] Gamepad: B vents, RB fires.
+
+### Phone
+
+- [ ] Touch: VENT and FIRE buttons work; the start meter and the boiler test are readable above the controls.
+- [ ] HUD strip fits in landscape without covering the minimap / leaderboard.
+- [ ] Complete 3-lap race vs 3 AI at ≥ 30 fps (Medium).
+

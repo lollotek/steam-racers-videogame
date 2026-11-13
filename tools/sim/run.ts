@@ -1,10 +1,11 @@
 /**
  * Headless race runner (doc 03 §15.2). Runs AI-vs-AI races faster than real time and prints stats.
- *   npx tsx tools/sim/run.ts [--racers 4] [--laps 3] [--track foundry-01] [--preset tuning.json] [--max 400] [--trace]
+ *   npx tsx tools/sim/run.ts [--racers 4] [--laps 3] [--track foundry-01] [--preset tuning.json] [--max 400] [--seed 1] [--trace]
+ * M3: AI drivers with the full rules (start test, boiler, hull, ramming, cannon); rules stats per racer.
  */
 import { readFileSync } from 'node:fs';
 import { RaceSim, SIM_STEP, initPhysics } from '../../src/sim/race-sim';
-import { createAutopilot, drive } from '../../src/ai/autopilot';
+import { createDriver, driveRacer } from '../../src/ai/driver';
 import { HOT_ROD, STEAM_TANK } from '../../src/vehicles/vehicle-physics';
 import { tunables, type Preset } from '../../src/core/tunables';
 import type { TrackFile } from '../../src/track/track-format';
@@ -19,6 +20,7 @@ const trackId = arg('track', 'foundry-01');
 const maxTime = Number(arg('max', '400'));
 const trace = args.includes('--trace');
 const presetPath = arg('preset', '');
+const seed = Number(arg('seed', '1'));
 
 await initPhysics();
 if (presetPath) tunables.applyPreset(JSON.parse(readFileSync(presetPath, 'utf8')) as Preset);
@@ -28,13 +30,39 @@ if (args.includes('--laps')) file.laps = Number(arg('laps', '3'));
 const sim = new RaceSim(
   file,
   Array.from({ length: racers }, (_, i) => ({ spec: i % 2 === 0 ? HOT_ROD : STEAM_TANK, name: `AI${i + 1}` })),
+  seed,
 );
-const pilots = sim.racers.map((_, i) => createAutopilot(((i % 3) - 1) * 1.5));
-const stats = sim.racers.map(() => ({ repositions: 0, maxSpeed: 0, offTrackSteps: 0, driftSteps: 0, wrongWaySteps: 0 }));
+const pilots = sim.racers.map((_, i) => createDriver(i, seed, ((i % 3) - 1) * 1.5));
+const stats = sim.racers.map(() => ({
+  repositions: 0,
+  maxSpeed: 0,
+  offTrackSteps: 0,
+  driftSteps: 0,
+  wrongWaySteps: 0,
+  start: '',
+  damage: {} as Record<string, number>,
+  boiler: {} as Record<string, number>,
+  shots: 0,
+  hits: {} as Record<string, number>,
+  rams: 0,
+}));
+const bump = (o: Record<string, number>, k: string, n = 1) => (o[k] = (o[k] ?? 0) + n);
 const t0 = performance.now();
 while (sim.phase !== 'finished' && sim.clock < maxTime) {
-  const cmds = sim.racers.map((r, i) => drive(pilots[i]!, sim.track, sim.pose(i), r.vehicle.gearbox, tunables.get('handling.maxSpeed')));
+  const cmds = pilots.map((p) => driveRacer(p, sim));
   sim.step(cmds);
+  for (const e of sim.drainRuleEvents()) {
+    if (trace) console.log(`[${sim.clock.toFixed(2)}] ${JSON.stringify(e)}`);
+    if (e.type === 'start') stats[e.racer]!.start = e.outcome;
+    if (e.type === 'damage') bump(stats[e.racer]!.damage, e.source, e.pf);
+    if (e.type === 'boiler') bump(stats[e.racer]!.boiler, e.outcome);
+    if (e.type === 'fire') stats[e.racer]!.shots++;
+    if (e.type === 'hit') bump(stats[e.from]!.hits, e.zone);
+    if (e.type === 'ram') {
+      stats[e.a]!.rams++;
+      stats[e.b]!.rams++;
+    }
+  }
   for (const e of sim.drainEvents()) {
     if (e.type === 'reposition') stats[e.racer]!.repositions++;
     if (trace && e.type !== 'reposition') console.log(`[${e.time.toFixed(2)}] ${e.type} racer=${e.racer}`);
@@ -77,6 +105,14 @@ const result = {
       offTrackPct: Number(((s.offTrackSteps / steps) * 100).toFixed(1)),
       driftPct: Number(((s.driftSteps / steps) * 100).toFixed(1)),
       wrongWayPct: Number(((s.wrongWaySteps / steps) * 100).toFixed(1)),
+      start: s.start,
+      pf: r.rules.hull.pf,
+      wrecked: r.vehicle.wrecked,
+      damageTaken: s.damage,
+      boiler: s.boiler,
+      shots: s.shots,
+      hitsDealt: s.hits,
+      rams: s.rams,
     };
   }),
 };

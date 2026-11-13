@@ -8,6 +8,7 @@ import type RAPIER from '@dimforge/rapier3d-compat';
 import type { ActionFrame } from '../input/actions';
 import { tunables } from '../core/tunables';
 import { type GearboxOutput, type GearboxState, createGearbox, stepGearbox } from './gearbox';
+import type { BoilerState } from '../rules/boiler';
 import { SURFACE_DRAG, SURFACE_GRIP, type Surface } from '../track/track-format';
 import { emptyFrame } from '../input/actions';
 
@@ -78,7 +79,7 @@ export interface VehicleTelemetry {
 export class PhysicsVehicle {
   readonly body: RAPIER.RigidBody;
   readonly controller: RAPIER.DynamicRayCastVehicleController;
-  readonly gearbox: GearboxState = createGearbox();
+  readonly gearbox: GearboxState;
   /** Transforms for interpolation (doc 03 §4.1). */
   readonly prev = { x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1 };
   readonly curr = { x: 0, y: 0, z: 0, qx: 0, qy: 0, qz: 0, qw: 1 };
@@ -90,11 +91,13 @@ export class PhysicsVehicle {
   stun = 0;
   /** Engine target multiplier while scraping a barricade (1 = free). */
   edgeSlow = 1;
+  /** Wreck (0 PF): engine off for good, brakes locked; stays on the track as an obstacle. */
+  wrecked = false;
   /** Half width of the collider (covers the wheels). */
   readonly halfX: number;
   /** Mass currently applied to the body (follows the tunable live). */
   private mass = 0;
-  private readonly collider: RAPIER.Collider;
+  readonly collider: RAPIER.Collider;
   private readonly normal = { x: 0, y: 1, z: 0 };
 
   constructor(
@@ -102,7 +105,9 @@ export class PhysicsVehicle {
     private world: RAPIER.World,
     readonly spec: VehicleSpec,
     spawn: { x: number; z: number; heading: number },
+    boiler?: BoilerState,
   ) {
+    this.gearbox = createGearbox(boiler);
     const { half } = spec;
     const bodyDesc = rapier.RigidBodyDesc.dynamic()
       .setTranslation(spawn.x, spec.wheelRadius + 0.6, spawn.z)
@@ -164,6 +169,7 @@ export class PhysicsVehicle {
       this.stun = Math.max(0, this.stun - dt);
       locked = true;
     }
+    if (this.wrecked) locked = true;
     // During the countdown gears are frozen (the start test arrives in M3).
     const out = stepGearbox(this.gearbox, locked ? LOCKED_FRAME : input, dt, fwdSpeed, maxSpeed);
     this.lastOutput = out;
@@ -179,14 +185,14 @@ export class PhysicsVehicle {
     let accel = 0;
     let brake = 0;
     if (locked) {
-      brake = 6; // wheel brake impulse: holds the car on the grid
+      brake = this.wrecked ? 40 : 6; // wheel brake impulse: holds the car on the grid (a wreck harder)
     } else if (out.braking) {
       accel = -Math.min(t('handling.brake'), Math.abs(fwdSpeed) * 4) * Math.sign(fwdSpeed);
     } else {
       const err = target - fwdSpeed;
       const up = t('handling.accel') * (1 - 0.4 * speedFrac); // a bit less punch near top speed
       accel = err > 0 ? Math.min(up, err * 3) : Math.max(-t('handling.engineBrake'), err * 3);
-      if (out.pushing) accel += t('handling.pushAccel');
+      if (out.pushing) accel += t('handling.pushAccel') * this.gearbox.pushBoost;
       accel -= SURFACE_DRAG[surface] * speedFrac * Math.sign(fwdSpeed);
     }
     const engine = (mass * accel) / nDriven;
@@ -215,7 +221,7 @@ export class PhysicsVehicle {
     this.stabilise(dt, onGround);
     const q = this.body.rotation();
     const uy = 1 - 2 * (q.x * q.x + q.z * q.z);
-    this.troubleTime = uy < 0.3 || (Math.abs(fwdSpeed) < 0.3 && Math.abs(target) > 1 && !locked) ? this.troubleTime + dt : 0;
+    this.troubleTime = this.wrecked ? 0 : uy < 0.3 || (Math.abs(fwdSpeed) < 0.3 && Math.abs(target) > 1 && !locked) ? this.troubleTime + dt : 0;
 
     this.telemetry = { forwardSpeed: fwdSpeed, drifting, surface, wheelsOnGround: onGround };
     // Wheel rays only see static geometry: cars never "climb" on each other and get launched.
