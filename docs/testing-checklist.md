@@ -57,3 +57,27 @@ Compare against `refs/engine/engine (1).jpg` and `engine (4).jpg` (doc 02 §16).
 
 - [ ] Same look at Medium tier, ≥ 30 fps stable on a mid-range 2021 phone.
 - [ ] First load: shader warm-up time (console `[render] shaders compiled in … ms`) acceptable (< 10 s).
+
+## M2 — Driving prototype
+
+Goal (doc 03 §18): fun to drive 3 laps alone on desktop and phone. Rivals are autopilots (`?racers=1` to drive alone).
+
+### PC
+
+- [ ] Countdown 3-2-1, cars held on the grid, gears frozen until GO.
+- [ ] Car drives itself in 1st; ↑ (steam push) shifts up with a burst of speed and extra smoke; ↓ tap shifts down, hold brakes then reverses.
+- [ ] Steering feels responsive at low speed and calmer at high speed; hard steering at speed makes the rear slide (drift + dust).
+- [ ] Grates slightly less grip; the dirt section is slower and kicks up dust.
+- [ ] Walls stop the car without launching it; contact with rivals pushes, never flips.
+- [ ] R repositions on the track; a flipped or stuck car is repositioned automatically after ~2.5 s.
+- [ ] Wrong way warning when driving backwards.
+- [ ] HUD: position x/4, lap x/3, lap time, best lap, leaderboard; FINISH banner and results; Enter / steam push / button restarts.
+- [ ] Camera follows the track calmly through the chicanes (tune `showcase → Camera: track tangent vs heading`).
+- [ ] Gamepad: same, with analog steering.
+- [ ] `?players=2`: both players race with their own camera and HUD.
+- [ ] Tune `handling.*` and `gearbox.*` in `?debug`, export JSON, check it with `npx tsx tools/sim/run.ts --preset file.json`.
+
+### Phone
+
+- [ ] Touch: steering pad + STEAM + GEAR − are enough to complete 3 laps.
+- [ ] ≥ 30 fps during the race at Medium.

@@ -1,0 +1,26 @@
+{
+  "id": "foundry-01",
+  "name": "Iron City Foundry",
+  "biome": "foundry",
+  "cell": 20,
+  "width": 14,
+  "laps": 3,
+  "defaultSurface": "plate",
+  "defaultBarricade": "riveted",
+  "pieces": [
+    { "type": "start", "size": 3 },
+    { "type": "curve", "size": 1, "turn": "L", "surface": "grate" },
+    { "type": "curve", "size": 1, "turn": "R", "surface": "grate" },
+    { "type": "straight", "size": 1 },
+    { "type": "curve", "size": 2, "turn": "R" },
+    { "type": "straight", "size": 2 },
+    { "type": "curve", "size": 2, "turn": "R", "right": "hedgehog" },
+    { "type": "straight", "size": 1, "surface": "dirt", "left": "sandbags", "right": "sandbags" },
+    { "type": "curve", "size": 1, "turn": "L", "surface": "dirt", "left": "earth", "right": "earth" },
+    { "type": "curve", "size": 1, "turn": "R", "surface": "dirt", "left": "earth", "right": "earth" },
+    { "type": "straight", "size": 3, "surface": "dirt", "left": "barbed", "right": "barbed" },
+    { "type": "curve", "size": 2, "turn": "R" },
+    { "type": "straight", "size": 2 },
+    { "type": "curve", "size": 2, "turn": "R", "right": "corrugated" }
+  ]
+}

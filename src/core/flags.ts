@@ -7,6 +7,7 @@
  *   ?racers=4         4..8
  *   ?players=2        split screen (PC only)
  *   ?touch=1          force touch controls (0 = hide)
+ *   ?laps=1           override the track lap count (1..9)
  *   ?test             expose test hooks on window
  */
 import type { QualityTierName } from '../render/quality';
@@ -20,6 +21,7 @@ export interface Flags {
   players: 1 | 2;
   touch: boolean | null;
   test: boolean;
+  laps: number | null;
 }
 
 const TIERS: readonly QualityTierName[] = ['low', 'medium', 'high', 'ultra'];
@@ -41,5 +43,6 @@ export function parseFlags(search: string): Flags {
     players: num('players', 1) >= 2 ? 2 : 1,
     touch: touch === null ? null : touch !== '0',
     test: p.has('test'),
+    laps: p.has('laps') ? Math.min(9, Math.max(1, Math.floor(num('laps', 3)))) : null,
   };
 }

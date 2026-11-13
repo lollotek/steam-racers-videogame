@@ -16,6 +16,8 @@ export default defineConfig({
   reporter: [['list']],
   use: {
     baseURL: 'http://localhost:5199',
+    // Hardware GL in headless Chromium on Windows (otherwise SwiftShader software rendering at ~2 fps).
+    launchOptions: { args: ['--use-angle=d3d11', '--ignore-gpu-blocklist'] },
     trace: 'retain-on-failure',
   },
   projects: [

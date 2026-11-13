@@ -185,6 +185,14 @@ Il bordo della pista è un muro di terra; sopra ogni tratto c'è un tipo di barr
 
 Le barricate non si rompono. Le IA stanno più lontane dai lati duri.
 
+**Come funziona il bordo.** Il bordo è un muro invisibile e liscio: paletti, sacchi e ricci sono solo grafica, non ci si può incastrare. Ogni pezzo di pista ha un tipo di barricata per lato; il tipo decide la reazione e anche l'ambiente generato dietro (fonderia, depositi, sfasciacarrozze, postazione fortificata, terra brulla, terra di nessuno).
+
+- **Strisciata**: si prosegue lungo il bordo ma sempre più lenti della traiettoria pulita (poco sulle lamiere rivettate, molto su ricci, sacchi e filo spinato).
+- **Urto di striscio**: si perde velocità e il mezzo viene raddrizzato lungo il bordo.
+- **Urto frontale**: schianto. Il mezzo si ferma e riparte in prima.
+- Scintille (o polvere sui bordi morbidi) e tremolio dello schermo accompagnano ogni impatto; intensità nel gruppo `feedback`.
+- I PF della tabella arrivano in M3, agganciati agli stessi eventi (urto, schianto, strisciata ogni tot).
+
 ## 7\. Armi e combattimento
 
 ### 7.1 Equipaggiamento

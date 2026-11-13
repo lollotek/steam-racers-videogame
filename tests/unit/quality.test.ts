@@ -37,6 +37,19 @@ describe('DynamicResolution', () => {
     expect(d.scale).toBe(TIERS.high.renderScale);
   });
 
+  it('ignores isolated hitches (shader compile, tab switch) and forgets history on reset', () => {
+    const d = new DynamicResolution(TIERS.high, 60);
+    for (let i = 0; i < 20; i++) {
+      d.update(2000);
+      run(d, 1000 / 60, 0.5);
+    }
+    expect(d.scale).toBe(TIERS.high.renderScale);
+    run(d, 40, 0.9); // almost long enough to lower the scale…
+    d.reset(); // …but a new race starts
+    run(d, 40, 0.9);
+    expect(d.scale).toBe(TIERS.high.renderScale);
+  });
+
   it('does nothing when disabled', () => {
     const d = new DynamicResolution(TIERS.medium, 30);
     d.enabled = false;

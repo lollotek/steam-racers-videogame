@@ -12,6 +12,7 @@ import {
   Color,
   CylinderGeometry,
   DirectionalLight,
+  Euler,
   Float32BufferAttribute,
   Group,
   HemisphereLight,
@@ -38,6 +39,8 @@ import { InkLitMaterial, heightFogNode } from '../render/ink/ink-material';
 import type { ProceduralSet } from '../render/procedural/textures';
 import type { EmitterOptions } from '../render/fx/particles';
 import { buildDressing, type Reserved } from './dressing';
+import { sampleAt, type CompiledTrack } from '../track/compile';
+import type { Surface } from '../track/track-format';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type N = any;
@@ -67,44 +70,10 @@ export interface FoundryWorld {
   update(dt: number, focus: Vector3): void;
 }
 
-const TRACK_POINTS: [number, number][] = [
-  [-80, -40], [0, -58], [80, -42], [118, 0], [90, 48], [35, 32], [0, 62], [-42, 86], [-105, 55], [-122, 0],
-];
+
 
 function ink(p: ConstructorParameters<typeof InkLitMaterial>[0]): InkLitMaterial {
   return new InkLitMaterial(p);
-}
-
-/** Ribbon geometry along the curve: u across (0..1), v along (metres / width). */
-function ribbon(curve: CatmullRomCurve3, samples: number, halfWidth: number, y: number, from = 0, to = 1): BufferGeometry {
-  const pos: number[] = [];
-  const uvs: number[] = [];
-  const idx: number[] = [];
-  const up = new Vector3(0, 1, 0);
-  let dist = 0;
-  let prev: Vector3 | null = null;
-  for (let i = 0; i <= samples; i++) {
-    const t = from + ((to - from) * i) / samples;
-    const p = curve.getPointAt(t % 1);
-    const tan = curve.getTangentAt(t % 1);
-    const left = new Vector3().crossVectors(up, tan).normalize();
-    if (prev) dist += p.distanceTo(prev);
-    prev = p;
-    for (const side of [-1, 1]) {
-      pos.push(p.x + left.x * halfWidth * side, y, p.z + left.z * halfWidth * side);
-      uvs.push(side < 0 ? 0 : 1, dist / (halfWidth * 2));
-    }
-    if (i < samples) {
-      const a = i * 2;
-      idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
-    }
-  }
-  const g = new BufferGeometry();
-  g.setAttribute('position', new Float32BufferAttribute(pos, 3));
-  g.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
-  g.setIndex(idx);
-  g.computeVertexNormals();
-  return g;
 }
 
 function textTexture(lines: string[], bg: string, fg: string, w = 512, h = 256): Texture {
@@ -183,6 +152,60 @@ function neonTexture(kind: 'gear' | 'bolt'): Texture {
   return t;
 }
 
+/** Ribbon over `count` consecutive centre-line samples starting at `from` (wraps). u across, v = s / width. */
+function ribbonFromSamples(track: CompiledTrack, from: number, count: number, halfWidth: number, y: number): BufferGeometry {
+  const pos: number[] = [];
+  const uvs: number[] = [];
+  const idx: number[] = [];
+  const n = track.samples.length;
+  let v = track.samples[from]!.s / (halfWidth * 2);
+  for (let k = 0; k < count; k++) {
+    const p = track.samples[(from + k) % n]!;
+    if (k > 0) {
+      const q = track.samples[(from + k - 1) % n]!;
+      v += Math.hypot(p.x - q.x, p.z - q.z) / (halfWidth * 2);
+    }
+    // Left edge first, then right edge (driver's right of the tangent is (-tz, tx)).
+    pos.push(p.x + p.tz * halfWidth, y, p.z - p.tx * halfWidth);
+    uvs.push(0, v);
+    pos.push(p.x - p.tz * halfWidth, y, p.z + p.tx * halfWidth);
+    uvs.push(1, v);
+    if (k < count - 1) {
+      const a = k * 2;
+      idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+    }
+  }
+  const g = new BufferGeometry();
+  g.setAttribute('position', new Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  // Flip the winding if the normals came out facing down.
+  const nr = g.getAttribute('normal');
+  if (nr.count && nr.getY(0) < 0) {
+    const flipped: number[] = [];
+    for (let i = 0; i < idx.length; i += 3) flipped.push(idx[i]!, idx[i + 2]!, idx[i + 1]!);
+    g.setIndex(flipped);
+    g.computeVertexNormals();
+  }
+  return g;
+}
+
+function checkerTexture(): Texture {
+  const c = document.createElement('canvas');
+  c.width = 512;
+  c.height = 64;
+  const ctx = c.getContext('2d')!;
+  for (let x = 0; x < 16; x++)
+    for (let y = 0; y < 2; y++) {
+      ctx.fillStyle = (x + y) % 2 ? '#1B1210' : '#D8D2C8';
+      ctx.fillRect(x * 32, y * 32, 32, 32);
+    }
+  const t = new CanvasTexture(c);
+  t.colorSpace = SRGBColorSpace;
+  return t;
+}
+
 /** Additive glow pool on the ground under a light source (doc 02 §3.4). */
 function lightPool(color: string, radius: number): Mesh {
   const m = new MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: AdditiveBlending });
@@ -209,7 +232,7 @@ function lavaMaterial(noise: Texture): MeshBasicNodeMaterial {
   return m;
 }
 
-export function buildFoundry(tex: ProceduralSet, seed: number): FoundryWorld {
+export function buildFoundry(tex: ProceduralSet, seed: number, track: CompiledTrack): FoundryWorld {
   const rng = new Rng(seed);
   const scene = new Scene();
   scene.background = new Color(tunables.get<string>('fog.color'));
@@ -251,60 +274,160 @@ export function buildFoundry(tex: ProceduralSet, seed: number): FoundryWorld {
   ground.receiveShadow = true;
   scene.add(ground);
 
-  const curve = new CatmullRomCurve3(TRACK_POINTS.map(([x, z]) => new Vector3(x, 0, z)), true, 'centripetal');
-  const trackLength = curve.getLength();
-  const road = new Mesh(ribbon(curve, 600, TRACK_HALF_WIDTH, 0.05), ink({ map: tex.plates, mapping: 'uv', lineWeight: 0.5 }));
-  road.receiveShadow = true;
-  scene.add(road);
-  // Grate patches every ~90 m.
-  const grateMat = ink({ map: tex.grate, mapping: 'uv', lineWeight: 0.5 });
-  for (let t = 0.05; t < 1; t += 90 / trackLength) {
-    const g = new Mesh(ribbon(curve, 12, TRACK_HALF_WIDTH * 0.92, 0.08, t, t + 14 / trackLength), grateMat);
-    g.receiveShadow = true;
-    scene.add(g);
+  // Decoration helper curve through the compiled centre line (props are placed with it).
+  const pts: Vector3[] = [];
+  for (let i = 0; i < track.samples.length; i += 4) pts.push(new Vector3(track.samples[i]!.x, 0, track.samples[i]!.z));
+  const curve = new CatmullRomCurve3(pts, true, 'centripetal');
+  const trackLength = track.length;
+  const up = new Vector3(0, 1, 0);
+
+  // --- Road surfaces: one ribbon per run of equal surface (doc 03 §7.1). -------------
+  const surfaceMats: Record<Surface, InkLitMaterial> = {
+    plate: ink({ map: tex.plates, mapping: 'uv', lineWeight: 0.5 }),
+    grate: ink({ map: tex.grate, mapping: 'uv', mapScale: 2, lineWeight: 0.5 }),
+    dirt: ink({ map: tex.dirt, mapping: 'uv', mapScale: 2, lineWeight: 0.5, color: '#E0CCB8' }),
+    sand: ink({ map: tex.dirt, mapping: 'uv', mapScale: 2, lineWeight: 0.5, color: '#F4E0B8' }),
+    oil: ink({ map: tex.plates, mapping: 'uv', lineWeight: 0.5, color: '#5A4E48', sheen: 0.6 }),
+    water: ink({ map: tex.dirt, mapping: 'uv', mapScale: 2, lineWeight: 0.5, color: '#6A7A80', sheen: 0.9 }),
+  };
+  const n = track.samples.length;
+  let runStart = 0;
+  while (runStart < n && track.samples[runStart]!.surface === track.samples[(runStart - 1 + n) % n]!.surface) runStart++;
+  if (runStart >= n) runStart = 0;
+  for (let k = 0; k < n; ) {
+    const i0 = (runStart + k) % n;
+    const surf = track.samples[i0]!.surface;
+    let len = 1;
+    while (k + len < n && track.samples[(runStart + k + len) % n]!.surface === surf) len++;
+    const road = new Mesh(ribbonFromSamples(track, i0, len + 1, track.halfWidth, 0.05), surfaceMats[surf]);
+    road.receiveShadow = true;
+    scene.add(road);
+    k += len;
   }
 
-  // --- Barriers (instanced) -----------------------------------------------------------
+  // Start/finish line: checker strip + gantry at lineS.
+  {
+    const smp = sampleAt(track, track.lineS);
+    const yaw = Math.atan2(smp.tx, smp.tz);
+    const line = new Mesh(new PlaneGeometry(track.halfWidth * 2, 2.2), ink({ map: checkerTexture(), mapping: 'uv', hatch: false, lineWeight: 0.5 }));
+    line.rotation.set(-Math.PI / 2, 0, yaw);
+    line.position.set(smp.x, 0.09, smp.z);
+    scene.add(line);
+    const gantry = new Group();
+    const ironG = ink({ map: tex.iron, mapping: 'world', mapScale: 0.3 });
+    for (const side of [-1, 1]) {
+      const post = new Mesh(new BoxGeometry(0.8, 8, 0.8), ironG);
+      post.position.set(side * (track.halfWidth + 1.5), 4, 0);
+      gantry.add(post);
+    }
+    const beam = new Mesh(new BoxGeometry(track.halfWidth * 2 + 4, 1.4, 1), ink({ map: textTexture(['START'], '#B08A4A', '#1B1210', 1024, 128), mapping: 'uv' }));
+    beam.position.set(0, 8, 0);
+    gantry.add(beam);
+    gantry.position.set(smp.x, 0, smp.z);
+    gantry.rotation.y = yaw;
+    gantry.traverse((o) => {
+      o.castShadow = true;
+      o.receiveShadow = true;
+    });
+    scene.add(gantry);
+  }
+
+  // --- Barricades by type (gameplay.md §6.3), instanced. -------------------------------
   const wallGeo = new BoxGeometry(0.5, 1.3, 4.1);
   const wallMat = ink({ map: tex.rust, mapping: 'world', mapScale: 0.35 });
+  const corrugatedMat = ink({ map: tex.iron, mapping: 'world', mapScale: 0.6, color: '#C8BEB4' });
   const spikeGeo = new CylinderGeometry(0, 0.16, 1.1, 6);
   const spikeMat = ink({ color: '#6E655E', sheen: 0.4 });
   const tyreGeo = new TorusGeometry(0.55, 0.25, 8, 14);
   tyreGeo.rotateX(Math.PI / 2);
   const tyreMat = ink({ color: '#2A2422' });
-  const walls: Matrix4[] = [];
-  const spikes: Matrix4[] = [];
-  const tyres: Matrix4[] = [];
-  const steps = Math.floor(trackLength / 4.2);
-  const up = new Vector3(0, 1, 0);
+  const beamGeo = new BoxGeometry(0.22, 0.22, 2.4);
+  const bagGeo = new SphereGeometry(0.5, 10, 6);
+  bagGeo.scale(1.1, 0.45, 0.65);
+  const bagMat = ink({ map: tex.dirt, mapping: 'world', mapScale: 0.5, color: '#D8C8A8' });
+  const bermGeo = new CylinderGeometry(1, 1, 4.3, 10, 1, false, 0, Math.PI);
+  bermGeo.rotateX(Math.PI / 2);
+  const bermMat = ink({ map: tex.dirt, mapping: 'world', mapScale: 0.3, color: '#C0A890' });
+  const postGeo = new BoxGeometry(0.18, 1.6, 0.18);
+  const wireGeo = new BoxGeometry(0.04, 0.04, 4.2);
+  const postMat = ink({ color: '#5C4A3A' });
+  const wireMat = ink({ color: '#8C8078', lineWeight: 0.3 });
+  const L: Record<string, Matrix4[]> = { wall: [], corr: [], spike: [], tyre: [], beam: [], bag: [], berm: [], post: [], wire: [] };
+  const step = 4.2;
+  const steps = Math.floor(trackLength / step);
+  const one = new Vector3(1, 1, 1);
   for (let i = 0; i < steps; i++) {
-    const t = i / steps;
-    const p = curve.getPointAt(t);
-    const tan = curve.getTangentAt(t);
-    const left = new Vector3().crossVectors(up, tan).normalize();
-    const curvature = tan.angleTo(curve.getTangentAt((t + 0.01) % 1));
-    const yaw = Math.atan2(tan.x, tan.z);
+    const d = i * step + step / 2;
+    const sp = sampleAt(track, d);
+    const smp = track.samples[Math.round(d / track.spacing) % n]!;
+    const yaw = Math.atan2(sp.tx, sp.tz);
+    const q = new Quaternion().setFromAxisAngle(up, yaw);
+    const tight = Math.abs(sp.curvature) > 0.06;
     for (const side of [-1, 1]) {
-      const pos = p.clone().addScaledVector(left, (TRACK_HALF_WIDTH + 0.7) * side);
-      if (curvature > 0.06) {
+      const type = side > 0 ? smp.right : smp.left;
+      // Driver's right of the tangent: (-tz, tx).
+      const ox = -sp.tz * side;
+      const oz = sp.tx * side;
+      const off = track.halfWidth + 0.7;
+      const at = (dd: number, y: number) => new Vector3(sp.x + ox * dd, y, sp.z + oz * dd);
+      const M = (pos: Vector3, rot: Quaternion = q) => new Matrix4().compose(pos, rot, one);
+      if (tight && (type === 'riveted' || type === 'corrugated')) {
         // Tyre walls in tight corners (refs/engine 3).
-        for (let k = 0; k < 3; k++) tyres.push(new Matrix4().makeTranslation(pos.x, 0.25 + k * 0.5, pos.z));
-      } else {
-        walls.push(new Matrix4().compose(pos.clone().setY(0.65), new Quaternion().setFromAxisAngle(up, yaw), new Vector3(1, 1, 1)));
-        if (i % 3 === 0) spikes.push(new Matrix4().compose(pos.clone().setY(1.75), new Quaternion().setFromAxisAngle(new Vector3(side * left.z, 0, -side * left.x).normalize(), 0.35 * side), new Vector3(1, 1, 1)));
+        // Behind the contact line of the invisible rail (race/barricades.ts), like every barricade.
+        for (let k = 0; k < 3; k++) L.tyre!.push(new Matrix4().makeTranslation(sp.x + ox * (off + 0.5), 0.25 + k * 0.5, sp.z + oz * (off + 0.5)));
+        continue;
+      }
+      switch (type) {
+        case 'riveted':
+          L.wall!.push(M(at(off, 0.65)));
+          if (i % 3 === 0) L.spike!.push(M(at(off, 1.75)));
+          break;
+        case 'corrugated':
+          L.corr!.push(M(at(off, 0.65)));
+          break;
+        case 'hedgehog':
+          L.wall!.push(M(at(off + 0.3, 0.65)));
+          if (i % 2 === 0)
+            for (const [rx, ry] of [[0.6, 0.6], [-0.6, 0.6], [0, -0.75]] as const) {
+              L.beam!.push(M(at(off - 0.6, 0.9), new Quaternion().setFromEuler(new Euler(rx, yaw + ry, 0))));
+            }
+          break;
+        case 'sandbags': {
+          const rot = new Quaternion().setFromAxisAngle(up, yaw + Math.PI / 2);
+          for (let row = 0; row < 3; row++)
+            for (let b = 0; b < 4; b++) {
+              const along = -1.6 + b * 1.05 + row * 0.5;
+              L.bag!.push(M(new Vector3(sp.x + ox * (off - 0.2) + sp.tx * along, 0.22 + row * 0.42, sp.z + oz * (off - 0.2) + sp.tz * along), rot));
+            }
+          break;
+        }
+        case 'earth':
+          L.berm!.push(M(at(off + 0.3, 0)));
+          break;
+        case 'barbed':
+          L.post!.push(M(at(off, 0.8)));
+          for (const y of [0.6, 1.1, 1.5]) L.wire!.push(M(at(off, y)));
+          break;
       }
     }
   }
   const inst = (geo: BufferGeometry, mat: InkLitMaterial, list: Matrix4[]) => {
+    if (!list.length) return null;
     const m = new InstancedMesh(geo, mat, list.length);
     list.forEach((mx, i) => m.setMatrixAt(i, mx));
     m.castShadow = m.receiveShadow = true;
     scene.add(m);
     return m;
   };
-  inst(wallGeo, wallMat, walls);
-  inst(spikeGeo, spikeMat, spikes);
-  inst(tyreGeo, tyreMat, tyres);
+  inst(wallGeo, wallMat, L.wall!);
+  inst(wallGeo, corrugatedMat, L.corr!);
+  inst(spikeGeo, spikeMat, L.spike!);
+  inst(tyreGeo, tyreMat, L.tyre!);
+  inst(beamGeo, spikeMat, L.beam!);
+  inst(bagGeo, bagMat, L.bag!);
+  inst(bermGeo, bermMat, L.berm!);
+  inst(postGeo, postMat, L.post!);
+  inst(wireGeo, wireMat, L.wire!);
 
   // --- Props -------------------------------------------------------------------------
   const emitters: EmitterOptions[] = [];
@@ -332,17 +455,38 @@ export function buildFoundry(tex: ProceduralSet, seed: number): FoundryWorld {
   };
 
   /** Point at distance `off` from the track centre at curve parameter t (+ = left). */
-  const beside = (t: number, off: number) => {
-    const p = curve.getPointAt(t);
-    const left = new Vector3().crossVectors(up, curve.getTangentAt(t)).normalize();
-    return { p: p.addScaledVector(left, off), yaw: Math.atan2(-left.x, -left.z) * (off > 0 ? 1 : -1) };
+  /** Distance from (x, z) to the nearest centre-line sample. */
+  const distToTrack = (x: number, z: number) => {
+    let d = Infinity;
+    for (const smp of track.samples) d = Math.min(d, (smp.x - x) ** 2 + (smp.z - z) ** 2);
+    return Math.sqrt(d);
+  };
+  /**
+   * Point `off` metres beside the track at curve parameter t. Off-track spots must keep the same
+   * clearance from every part of the track (the block layout folds back on itself): if the
+   * requested side is blocked, the other side and farther offsets are tried.
+   */
+  const beside = (t: number, off: number, extra = 0) => {
+    const at = (o: number) => {
+      const p = curve.getPointAt(t);
+      const left = new Vector3().crossVectors(up, curve.getTangentAt(t)).normalize();
+      return { p: p.addScaledVector(left, o), yaw: Math.atan2(-left.x, -left.z) * (o > 0 ? 1 : -1) };
+    };
+    if (Math.abs(off) < track.halfWidth) return at(off);
+    for (const o of [off, -off, off * 1.4, -off * 1.4, off * 1.9, -off * 1.9]) {
+      const c = at(o);
+      if (distToTrack(c.p.x, c.p.z) >= Math.abs(off) - 1 + extra) return c;
+    }
+    return null; // no clear spot: skip the prop rather than dropping it on the road
   };
 
   // Furnaces / boilers with glowing mouths, chimneys and light pools.
   const furnaceTs = [0.04, 0.2, 0.37, 0.55, 0.72, 0.88];
   furnaceTs.forEach((t, i) => {
     const side = i % 2 === 0 ? 1 : -1;
-    const { p } = beside(t, side * (TRACK_HALF_WIDTH + 13));
+    const spot = beside(t, side * (TRACK_HALF_WIDTH + 13), 2);
+    if (!spot) return;
+    const { p } = spot;
     const g = new Group();
     g.add(mesh(new CylinderGeometry(4.2, 4.6, 7, 16), i % 2 ? rustMat : ironMat, 0, 3.5, 0));
     g.add(mesh(new SphereGeometry(4.2, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), ironMat, 0, 7, 0));
@@ -372,7 +516,9 @@ export function buildFoundry(tex: ProceduralSet, seed: number): FoundryWorld {
   for (let i = 0; i < 9; i++) {
     const t = (i + 0.5) / 9;
     const side = rng.next() > 0.5 ? 1 : -1;
-    const { p } = beside(t, side * (TRACK_HALF_WIDTH + 2.5));
+    const spot = beside(t, side * (TRACK_HALF_WIDTH + 2.5));
+    if (!spot) continue;
+    const { p } = spot;
     const vent = new Group();
     vent.add(mesh(new CylinderGeometry(0.7, 0.9, 1.2, 10), brassMat, 0, 0.6, 0));
     vent.add(mesh(new CylinderGeometry(0.35, 0.35, 3, 8), ironMat, 1.2, 1.5, 0, 0, Math.PI / 2));
@@ -383,8 +529,13 @@ export function buildFoundry(tex: ProceduralSet, seed: number): FoundryWorld {
 
   // Overhead pipe runs with supports.
   for (const [t, side] of [[0.12, 1], [0.3, -1], [0.62, 1], [0.8, -1]] as const) {
-    const a = beside(t, side * (TRACK_HALF_WIDTH + 6)).p;
-    const b = beside(t + 0.05, side * (TRACK_HALF_WIDTH + 6)).p;
+    const sa = beside(t, side * (TRACK_HALF_WIDTH + 6), 1);
+    const sb = beside(t + 0.05, side * (TRACK_HALF_WIDTH + 6), 1);
+    if (!sa || !sb || Math.sign(sa.p.distanceTo(curve.getPointAt(t)) - 1) !== Math.sign(sb.p.distanceTo(curve.getPointAt(t + 0.05)) - 1)) continue;
+    const a = sa.p;
+    const b = sb.p;
+    // The pipe must not cross the road between its supports.
+    if (distToTrack((a.x + b.x) / 2, (a.z + b.z) / 2) < TRACK_HALF_WIDTH + 2) continue;
     const len = a.distanceTo(b);
     const pipe = new Mesh(new CylinderGeometry(0.8, 0.8, len, 12), rustMat);
     pipe.position.copy(a).add(b).multiplyScalar(0.5).setY(4.5);
@@ -405,7 +556,9 @@ export function buildFoundry(tex: ProceduralSet, seed: number): FoundryWorld {
   const boardMat = ink({ map: textTexture(['IRON CITY', 'STEAM COUNCIL'], '#D8D2C8', '#7A2A1E'), mapping: 'uv' });
   const boardMat2 = ink({ map: textTexture(['VALVES & CO.'], '#B08A4A', '#1B1210'), mapping: 'uv' });
   [[0.09, 1, neonCyan], [0.28, -1, boardMat], [0.47, 1, neonMag], [0.66, -1, boardMat2], [0.93, 1, neonCyan]].forEach(([t, side, mat]) => {
-    const { p } = beside(t as number, (side as number) * (TRACK_HALF_WIDTH + 4.5));
+    const spot = beside(t as number, (side as number) * (TRACK_HALF_WIDTH + 4.5), 4);
+    if (!spot) return;
+    const { p } = spot;
     const g = new Group();
     const isNeon = mat === neonCyan || mat === neonMag;
     g.add(mesh(new BoxGeometry(isNeon ? 5 : 9, isNeon ? 5 : 4.5, 0.4), isNeon ? ironMat : (mat as InkLitMaterial), 0, 4.5, 0));
@@ -423,7 +576,7 @@ export function buildFoundry(tex: ProceduralSet, seed: number): FoundryWorld {
   const casings = new InstancedMesh(casingGeo, ink({ color: '#C8A050', sheen: 1, hatch: false, lineWeight: 0 }), 500);
   const dummy = new Object3D();
   for (let i = 0; i < 500; i++) {
-    const { p } = beside(rng.next(), rng.range(-TRACK_HALF_WIDTH, TRACK_HALF_WIDTH) * 0.95);
+    const { p } = beside(rng.next(), rng.range(-TRACK_HALF_WIDTH, TRACK_HALF_WIDTH) * 0.95)!;
     dummy.position.set(p.x, 0.12, p.z);
     dummy.rotation.set(0, rng.next() * 6.28, 0);
     dummy.updateMatrix();
@@ -432,9 +585,11 @@ export function buildFoundry(tex: ProceduralSet, seed: number): FoundryWorld {
   scene.add(casings);
 
   // Spectator catwalk with simple figures (refs/engine 4–6).
-  {
+  (() => {
     const t = 0.5;
-    const { p } = beside(t, -(TRACK_HALF_WIDTH + 9));
+    const spot = beside(t, -(TRACK_HALF_WIDTH + 9), 6);
+    if (!spot) return;
+    const { p } = spot;
     const g = new Group();
     g.add(mesh(new BoxGeometry(26, 0.6, 5), ironMat, 0, 4, 0));
     for (const x of [-12, -4, 4, 12]) g.add(mesh(new BoxGeometry(0.5, 4, 0.5), ironMat, x, 2, 0));
@@ -452,11 +607,13 @@ export function buildFoundry(tex: ProceduralSet, seed: number): FoundryWorld {
     reserved.push({ x: p.x, z: p.z, r: 15 });
     const c = curve.getPointAt(t);
     g.lookAt(c.x, 0, c.z);
-  }
+  })();
 
   // Molten-metal pool with a stone rim, steam and a warm light (doc 02 §10).
-  {
-    const { p } = beside(0.64, -(TRACK_HALF_WIDTH + 17));
+  (() => {
+    const spot = beside(0.64, -(TRACK_HALF_WIDTH + 17), 3);
+    if (!spot) return;
+    const { p } = spot;
     const pool = new Mesh(new CircleGeometry(7, 40), lavaMaterial(tex.noise));
     pool.rotation.x = -Math.PI / 2;
     pool.position.set(p.x, 0.12, p.z);
@@ -473,10 +630,22 @@ export function buildFoundry(tex: ProceduralSet, seed: number): FoundryWorld {
     reserved.push({ x: p.x, z: p.z, r: 10 });
     for (let k = 0; k < 3; k++)
       emitters.push({ kind: 'steam', rate: 3, position: { x: p.x + rng.range(-4, 4), y: 0.5, z: p.z + rng.range(-4, 4) }, velocity: { x: 0, y: 1.8, z: 0 }, spread: 0.8, life: [2.5, 4], size: [2, 6] });
-  }
+  })();
 
   // Generated surroundings: props in bands around the track (doc 03 §7.3).
-  const dressing = buildDressing(scene, curve, TRACK_HALF_WIDTH, tex, seed, reserved);
+  const barricadeAt = (x: number, z: number, left: boolean) => {
+    let best = track.samples[0]!;
+    let bestD = Infinity;
+    for (const smp of track.samples) {
+      const d = (smp.x - x) ** 2 + (smp.z - z) ** 2;
+      if (d < bestD) {
+        bestD = d;
+        best = smp;
+      }
+    }
+    return left ? best.left : best.right;
+  };
+  const dressing = buildDressing(scene, curve, TRACK_HALF_WIDTH, tex, seed, reserved, barricadeAt);
   emitters.push(...dressing.emitters);
   console.info(`[world] dressing: ${dressing.instances} instances in ${dressing.instancedMeshes} instanced meshes`);
 
