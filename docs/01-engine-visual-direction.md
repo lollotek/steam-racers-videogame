@@ -213,7 +213,7 @@ Priority: **P0** = needed for the first vertical slice, **P1** = needed for the 
 | ID | Question | Recommendation |
 |---|---|---|
 | **D1** | Final style: ink-comic (engine refs) or painterly semi-realistic (vehicle/world refs)? | ✅ **Decided (2026-11-12): ink-comic.** `vehicles`/`world` refs are content and color inspiration only. |
-| **D2** | Camera: fixed orientation top-down (engine refs 1–3, 5–6) or chase camera rotating with the track (closer to ref 4)? | ✅ **Decided (2026-11-12): high 3/4 camera rotating with the track.** A fixed-orientation mode may still be prototyped for comparison. |
+| **D2** | Camera: fixed orientation top-down (engine refs 1–3, 5–6) or chase camera rotating with the track (closer to ref 4)? | ✅ **Decided (2026-11-12): high 3/4 camera rotating with the track.** **Update (2026-11-13):** a fixed-orientation near-isometric "board" camera (engine refs 1, 2, 5, 6) is now the default; the rotating chase camera stays available via the debug panel (`camera.mode`). |
 | **D3** | Renderer: WebGPU + TSL (with WebGL2 fallback) or WebGL2 only? | ✅ **Decided (2026-11-12): `WebGPURenderer` + TSL with automatic WebGL2 fallback.** |
 | **D4** | Minimum mobile target? | ✅ **Decided (2026-11-12): mid-range 2021** (e.g. iPhone 12, Galaxy A52 class). Must hold a stable 30 fps at Low/Medium tier. |
 | **D5** | Racers per race and game mode? | ✅ **Revised (2026-11-12): configurable 4–8 racers, default 4** (player + 3 AI, as in [gameplay.md](gameplay.md)). Single player vs AI, plus **2-player split screen on PC only**. No online multiplayer for now; the simulation stays fixed-timestep so it can be added later. |

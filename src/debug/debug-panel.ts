@@ -53,6 +53,20 @@ export async function mountDebugPanel(game: Game, isTouch: boolean): Promise<voi
     mon.p2 = s.players[1]?.input ?? '';
   }, 100);
 
+  // --- Quick camera switch (also under the "camera" group) ---------------------
+  const camProxy = {
+    get mode() {
+      return tunables.get<string>('camera.mode');
+    },
+    set mode(v: string) {
+      tunables.set('camera.mode', v);
+    },
+  };
+  pane.addBinding(camProxy, 'mode', { label: 'Camera', options: { 'Board (isometric)': 'board', 'Chase (behind)': 'chase' } });
+  tunables.onChange((key) => {
+    if (key === 'camera.mode') pane.refresh();
+  });
+
   // --- Presets -----------------------------------------------------------------
   const pf = pane.addFolder({ title: 'Presets', expanded: false });
   const state = { name: 'my-preset', load: '' };
