@@ -6,8 +6,15 @@ const gear = async (page: import('@playwright/test').Page, p = 0) => (await snap
 test.describe('keyboard (PC)', () => {
   test.skip(({ isMobile }) => isMobile, 'PC only');
 
-  test('P1 arrows: steam push shifts up, gear down shifts down, steer turns', async ({ page }) => {
+  test('P1 arrows: steer turns, steam push shifts up, gear down shifts down', async ({ page }) => {
     await boot(page, 'tier=low');
+    // Steering first, on the start straight (later the car reaches the chicane walls).
+    const h0 = (await snapshot(page)).players[0]!.heading;
+    await page.keyboard.down('ArrowRight');
+    await expect.poll(async () => (await snapshot(page)).players[0]!.heading).toBeLessThan(h0 - 0.05);
+    await page.keyboard.up('ArrowRight');
+    expect((await snapshot(page)).players[0]!.device).toBe('keyboard');
+
     await page.keyboard.press('ArrowUp');
     await expect.poll(() => gear(page)).toBe(2);
     // Wait for the push cooldown in simulated time (the sim slows down when the page is starved).
@@ -16,13 +23,6 @@ test.describe('keyboard (PC)', () => {
     await expect.poll(() => gear(page)).toBe(3);
     await page.keyboard.press('ArrowDown');
     await expect.poll(() => gear(page)).toBe(2);
-
-    const h0 = (await snapshot(page)).players[0]!.heading;
-    await page.keyboard.down('ArrowRight');
-    await page.waitForTimeout(500);
-    await page.keyboard.up('ArrowRight');
-    expect((await snapshot(page)).players[0]!.heading).toBeLessThan(h0);
-    expect((await snapshot(page)).players[0]!.device).toBe('keyboard');
   });
 
   test('Escape pauses and resumes', async ({ page }) => {

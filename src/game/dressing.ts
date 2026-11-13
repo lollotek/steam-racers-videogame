@@ -33,6 +33,7 @@ import { tunables } from '../core/tunables';
 import { InkLitMaterial } from '../render/ink/ink-material';
 import type { ProceduralSet } from '../render/procedural/textures';
 import type { EmitterOptions } from '../render/fx/particles';
+import type { Barricade } from '../track/track-format';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type N = any;
@@ -70,6 +71,32 @@ interface PropDef {
   /** Additive glow pool (color, radius). */
   pool?: [string, number];
 }
+
+/**
+ * What lies beyond each barricade type: the edge of a piece decides its whole surroundings
+ * (gameplay.md §6.3, doc 03 §7.3). `mul` multiplies prop weights (`other` for the rest),
+ * `density` thins every band.
+ */
+interface Theme {
+  density: number;
+  other: number;
+  mul: Record<string, number>;
+}
+
+const THEMES: Record<Barricade, Theme> = {
+  // Riveted plates: the foundry itself — boilers, pipes, gears.
+  riveted: { density: 1, other: 1, mul: { hedgehogs: 0, shack: 0, bunker: 0, rocks: 0, wireCoil: 0, wreck: 0.3 } },
+  // Corrugated sheet: depots and shanty workshops.
+  corrugated: { density: 1, other: 1, mul: { shack: 5, crates: 2.5, barrel: 1.5, tank: 1.5, boiler: 0.4, generator: 0.5, pipes: 0.5, bigGear: 0.3, chimney: 0.5, hedgehogs: 0, bunker: 0, rocks: 0, wireCoil: 0, wreck: 0.5 } },
+  // Czech hedgehogs: scrapyard and tank traps.
+  hedgehog: { density: 1, other: 0.5, mul: { hedgehogs: 6, scrapPile: 3, scrapSmall: 3, wreck: 3.5, spikeFence: 2.5, tyres: 2, tower: 1, wireCoil: 1, rocks: 0.5, boiler: 0.2, generator: 0.2, pipes: 0.3, tank: 0.4, chimney: 0.4, shack: 0, bunker: 0 } },
+  // Sandbags: a fortified post.
+  sandbags: { density: 1, other: 0.4, mul: { sandbags: 5, bunker: 5, crates: 2.5, brazier: 2.5, barrel: 1, tower: 1.5, wireCoil: 1, hedgehogs: 1, boiler: 0, pipes: 0, bigGear: 0, generator: 0.3, tank: 0.3, chimney: 0.2, shack: 0.5, rocks: 0.3, wreck: 0.3 } },
+  // Bare earth: open wasteland, rocks and little else.
+  earth: { density: 0.5, other: 0.1, mul: { rocks: 8, scrapSmall: 1, barrelTipped: 1, wreck: 0.8, tyres: 0.5 } },
+  // Barbed wire: no man's land.
+  barbed: { density: 0.75, other: 0.12, mul: { wireCoil: 7, hedgehogs: 2.5, spikeFence: 3, rocks: 2, wreck: 1, scrapSmall: 1, sandbags: 1 } },
+};
 
 export interface DressingResult {
   emitters: EmitterOptions[];
@@ -144,6 +171,8 @@ export function buildDressing(
   tex: ProceduralSet,
   seed: number,
   reserved: Reserved[],
+  /** Barricade type of the track edge nearest to a centre-line point, on its left or right side. */
+  barricadeAt: (x: number, z: number, left: boolean) => Barricade = () => 'riveted',
 ): DressingResult {
   const rng = new Rng(seed * 7919 + 13);
   const { mats, g } = makeKit(tex);
@@ -191,6 +220,65 @@ export function buildDressing(
       }
       parts.push({ geo: g.box, mat: mats.wood, m: M(0, 1.3, 0.12, 0, 0, 0, 4.6, 0.18, 0.1) });
       parts.push({ geo: g.box, mat: mats.wood, m: M(0, 0.6, 0.12, 0, 0, 0, 4.6, 0.18, 0.1) });
+      return parts;
+    } },
+    // ---- themed props (weights come from the barricade theme) -------------------
+    { name: 'hedgehogs', radius: 2.2, bands: ['edge', 'mid'], weight: 1, build: (r) => {
+      const parts: Part[] = [];
+      const n = r.int(1, 3);
+      for (let k = 0; k < n; k++) {
+        const x = (k - (n - 1) / 2) * 2.1 + r.range(-0.2, 0.2);
+        const yaw = r.range(0, Math.PI);
+        for (const [rx, ry] of [[0.6, 0.6], [-0.6, 0.6], [0, -0.75]] as const)
+          parts.push({ geo: g.box, mat: r.next() > 0.5 ? mats.iron : mats.rust, m: M(x, 0.9, r.range(-0.4, 0.4), rx, yaw + ry, 0, 0.22, 0.22, 2.4) });
+      }
+      return parts;
+    } },
+    { name: 'shack', radius: 3.4, bands: ['mid'], weight: 1, build: (r) => {
+      const w = r.range(3.4, 4.6);
+      const d = r.range(2.6, 3.4);
+      const h = r.range(2.3, 3);
+      return [
+        { geo: g.box, mat: mats.ironLight, m: M(0, h / 2, 0, 0, 0, 0, w, h, d) },
+        { geo: g.box, mat: mats.rust, m: M(0, h + 0.15, 0, 0, 0, r.range(0.06, 0.16), w + 0.7, 0.14, d + 0.7) },
+        { geo: g.box, mat: mats.dark, m: M(-w * 0.2, 0.95, d / 2 + 0.02, 0, 0, 0, 0.9, 1.9, 0.08) },
+        { geo: g.cylLow, mat: mats.iron, m: M(w * 0.3, h + 0.9, 0, 0, 0, 0, 0.18, 1.6, 0.18) },
+        { geo: g.box, mat: mats.wood, m: M(w / 2 + 0.6, 0.45, 0, 0, r.range(-0.3, 0.3), 0, 0.9, 0.9, 0.9) },
+      ];
+    } },
+    { name: 'bunker', radius: 2.9, bands: ['edge', 'mid'], weight: 1, build: (r) => {
+      const parts: Part[] = [];
+      for (let row = 0; row < 3; row++)
+        for (let i = 0; i < 7; i++) {
+          const a = -1.2 + (i + (row % 2) * 0.5) * 0.4;
+          parts.push({ geo: g.bag, mat: mats.sand, m: M(Math.sin(a) * 2.1, 0.22 + row * 0.42, Math.cos(a) * 2.1 - 1, 0, a + r.range(-0.1, 0.1), 0) });
+        }
+      parts.push({ geo: g.box, mat: mats.wood, m: M(0, 0.5, -0.6, 0, r.range(-0.4, 0.4), 0, 1, 1, 1) });
+      parts.push({ geo: g.box, mat: mats.rust, m: M(0, 1.55, 0.3, 0.12, 0, 0, 3.6, 0.12, 2.2) });
+      return parts;
+    } },
+    { name: 'rocks', radius: 1.8, bands: ['edge', 'mid', 'far'], weight: 1, build: (r) => {
+      const n = r.int(2, 4);
+      return Array.from({ length: n }, () => {
+        const s = r.range(0.5, 1.5);
+        return { geo: g.sphere, mat: r.next() > 0.4 ? mats.sand : mats.dark, m: M(r.range(-1.2, 1.2), s * 0.3, r.range(-1.2, 1.2), r.range(-0.4, 0.4), r.range(0, 6), r.range(-0.4, 0.4), s, s * r.range(0.45, 0.8), s * r.range(0.7, 1.2)) };
+      });
+    } },
+    { name: 'wireCoil', radius: 2.6, bands: ['edge', 'mid'], weight: 1, build: (r) => {
+      const parts: Part[] = [];
+      for (const x of [-2.2, 0, 2.2]) parts.push({ geo: g.box, mat: mats.wood, m: M(x, 0.8, 0, 0, 0, r.range(-0.12, 0.12), 0.16, 1.6, 0.16) });
+      // Concertina wire: thin hoops standing across the run.
+      for (let i = 0; i < 9; i++) parts.push({ geo: g.tyre, mat: mats.ironLight, m: M(-2 + i * 0.5, 0.75, r.range(-0.08, 0.08), 0, r.range(-0.2, 0.2), Math.PI / 2, 1, 0.25, 1), shadow: false });
+      return parts;
+    } },
+    { name: 'wreck', radius: 3.0, bands: ['mid'], weight: 1, build: (r) => {
+      const tilt = r.range(-0.25, 0.25);
+      const parts: Part[] = [
+        { geo: g.box, mat: mats.rust, m: M(0, 0.85, 0, 0, 0, tilt, 2, 1, 4.2) },
+        { geo: g.box, mat: mats.dark, m: M(0, 1.6, -0.5, 0, 0, tilt, 1.6, 0.7, 1.8) },
+        { geo: g.plate, mat: mats.iron, m: M(1.6, 0.2, 1, 0.3, r.range(0, 3), 0.2, 1.4, 1, 1) },
+      ];
+      for (const [x, z] of [[-1.1, 1.4], [1.1, 1.4], [-1.1, -1.4]] as const) parts.push({ geo: g.tyre, mat: mats.rubber, m: M(x, 0.55, z, 0, 0, Math.PI / 2, 1.1) });
       return parts;
     } },
     // ---- mid band -------------------------------------------------------------
@@ -298,15 +386,17 @@ export function buildDressing(
   for (const bandName of ['far', 'mid', 'edge'] as Band[]) {
     const band = bands[bandName];
     const candidates = props.filter((p) => p.bands.includes(bandName));
-    const total = candidates.reduce((s, p) => s + p.weight, 0);
     const count = Math.floor((length / band.step) * band.density);
     for (let i = 0; i < count; i++) {
       const t = (i + rng.next()) / count;
       for (const side of [-1, 1]) {
-        if (rng.next() > 0.85) continue; // leave gaps
-        let pick = rng.next() * total;
-        const def = candidates.find((p) => (pick -= p.weight) < 0) ?? candidates[0]!;
         const p = curve.getPointAt(t);
+        // The barricade on this side of the piece decides what is built behind it.
+        const theme = THEMES[barricadeAt(p.x, p.z, side > 0)];
+        if (rng.next() > 0.85 * theme.density) continue; // leave gaps
+        const weightOf = (d: PropDef) => d.weight * (theme.mul[d.name] ?? theme.other);
+        let pick = rng.next() * candidates.reduce((s, d) => s + weightOf(d), 0);
+        const def = candidates.find((d) => (pick -= weightOf(d)) < 0) ?? candidates[0]!;
         const left = new Vector3().crossVectors(up, curve.getTangentAt(t)).normalize();
         const off = side * rng.range(band.min + def.radius, band.max);
         const x = p.x + left.x * off;

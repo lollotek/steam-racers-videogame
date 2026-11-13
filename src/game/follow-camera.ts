@@ -55,6 +55,9 @@ export class FollowCamera {
   private fov = 0;
   private focus = new Vector3();
   private initialized = false;
+  /** Screen shake "trauma" 0..1; the shake is its square, so small hits stay subtle. */
+  private trauma = 0;
+  private shakeTime = 0;
 
   constructor(aspect: number) {
     this.camera = new PerspectiveCamera(tunables.get('camera.fov'), aspect, 2, 1000);
@@ -67,6 +70,16 @@ export class FollowCamera {
   setAspect(aspect: number): void {
     this.camera.aspect = aspect;
     this.camera.updateProjectionMatrix();
+  }
+
+  /** Add an impact to the shake (tunables group `feedback`). */
+  addShake(amount: number): void {
+    this.trauma = Math.min(1, this.trauma + amount);
+  }
+
+  /** Sustained shake (scraping): raises the trauma to at least `amount`. */
+  holdShake(amount: number): void {
+    this.trauma = Math.min(1, Math.max(this.trauma, amount));
   }
 
   update(target: CameraTarget, dt: number): void {
@@ -127,6 +140,19 @@ export class FollowCamera {
       this.focus.z - Math.cos(this.yaw) * back,
     );
     this.camera.lookAt(this.focus);
+
+    if (this.trauma > 0) {
+      const on = tunables.get<boolean>('feedback.shake');
+      const s = on ? this.trauma * this.trauma : 0;
+      this.shakeTime += dt * t('feedback.shakeFrequency');
+      const a = t('feedback.shakeAmplitude') * s;
+      const w = this.shakeTime * Math.PI * 2;
+      // Incommensurate sines: cheap, smooth and never visibly periodic.
+      this.camera.translateX(a * (Math.sin(w) * 0.6 + Math.sin(w * 2.31 + 1.7) * 0.4));
+      this.camera.translateY(a * (Math.sin(w * 1.37 + 0.6) * 0.6 + Math.sin(w * 2.93 + 4.1) * 0.4));
+      this.camera.rotateZ(((t('feedback.shakeRoll') * Math.PI) / 180) * s * Math.sin(w * 0.83 + 2.2));
+      this.trauma = Math.max(0, this.trauma - t('feedback.shakeDecay') * dt);
+    }
   }
 }
 

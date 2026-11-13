@@ -12,6 +12,7 @@ describe('parseFlags', () => {
       players: 1,
       touch: null,
       test: false,
+      laps: null,
     });
   });
 

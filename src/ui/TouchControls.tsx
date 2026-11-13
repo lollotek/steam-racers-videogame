@@ -1,6 +1,9 @@
+import type { ComponentChildren } from 'preact';
 import { useRef, useState } from 'preact/hooks';
 import type { Button } from '../input/actions';
 import type { TouchSource } from '../input/touch';
+import { ui } from './state';
+import { PIP_CHAR, steamPips } from './steam-pips';
 
 /**
  * On-screen controls (gameplay.md Appendix): left steering pad, big steam-push button,
@@ -26,14 +29,28 @@ export function TouchControls({ source }: { source: TouchSource }) {
         </div>
         <div class="touch-row big">
           <TouchButton source={source} button="gearDown" label="GEAR −" cls="pedal" />
-          <TouchButton source={source} button="steamPush" label="STEAM" cls="steam" />
+          <TouchButton source={source} button="steamPush" label="STEAM" cls="steam">
+            <SteamRing />
+          </TouchButton>
         </div>
       </div>
     </div>
   );
 }
 
-function TouchButton({ source, button, label, cls = '' }: { source: TouchSource; button: Button; label: string; cls?: string }) {
+function TouchButton({
+  source,
+  button,
+  label,
+  cls = '',
+  children,
+}: {
+  source: TouchSource;
+  button: Button;
+  label: string;
+  cls?: string;
+  children?: ComponentChildren;
+}) {
   const [down, setDown] = useState(false);
   const onDown = (e: PointerEvent) => {
     e.preventDefault();
@@ -55,8 +72,39 @@ function TouchButton({ source, button, label, cls = '' }: { source: TouchSource;
       onPointerCancel={onUp}
       onLostPointerCapture={onUp}
     >
-      {label}
+      {children}
+      <span class="tbtn-label">{label}</span>
     </div>
+  );
+}
+
+/**
+ * Steam points on the STEAM button perimeter: one arc per PV slot (CAL, plus red slots above CAL),
+ * same colours as the under-vehicle pips: lit = spendable, grey = cooling down / not enough steam,
+ * outline = empty (the next one fills up as it regenerates).
+ */
+function SteamRing() {
+  const steam = ui.players.value[0]?.steam;
+  if (!steam) return null;
+  const pips = steamPips(steam);
+  const R = 46;
+  const C = 2 * Math.PI * R;
+  const gap = pips.length > 1 ? 6 : 0;
+  const seg = C / pips.length - gap;
+  return (
+    <svg class={`steam-ring ${steam.usable ? 'usable' : ''}`} viewBox="0 0 104 104" data-testid="steam-ring" data-pips={pips.map((p) => PIP_CHAR[p.kind]).join('')}>
+      {pips.map((p, i) => {
+        const offset = -(i * (seg + gap)) + C / 4 - gap / 2; // start at 12 o'clock, clockwise
+        return (
+          <g key={i}>
+            <circle class={`ring-seg ${p.kind}`} cx="52" cy="52" r={R} stroke-dasharray={`${seg} ${C - seg}`} stroke-dashoffset={offset} />
+            {p.kind === 'empty' && p.fill > 0 && (
+              <circle class="ring-seg regen" cx="52" cy="52" r={R} stroke-dasharray={`${seg * p.fill} ${C - seg * p.fill}`} stroke-dashoffset={offset} />
+            )}
+          </g>
+        );
+      })}
+    </svg>
   );
 }
 

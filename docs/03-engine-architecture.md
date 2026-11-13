@@ -257,6 +257,22 @@ Tracks are **assembled from blocks** in the level editor (§7.3) and saved as `t
 
 Each block GLB carries its visual mesh, a simplified **collision mesh** (`col_*` nodes), barrier colliders and **connector sockets** (`socket_in`, `socket_out`) that define the local centerline segment.
 
+### 7.1.1 Block chain format (implemented in M2)
+
+`src/tracks/<id>.json` (`TrackFile`, `src/track/track-format.ts`) is a **chain of pieces** on a square grid: each piece starts at the exit of the previous one (edge midpoint of a cell, heading along a grid axis), which guarantees connectivity.
+
+| Piece | Parameters | Geometry |
+|---|---|---|
+| `start` | `size` (cells) | Straight; the grid and the start/finish line (`lineS` = end of the piece − 4 m) are inside it |
+| `straight` | `size` (cells) | Straight |
+| `curve` | `size` 1/2/3, `turn` L/R | Quarter circle, radius (size − 0.5) × cell: 10 / 30 / 50 m with 20 m cells |
+
+Optional per piece: `surface` (plate, grate, dirt, sand, oil, water → grip/drag, doc 03 §6.1) and `left`/`right` barricade (earth, riveted, hedgehog, corrugated, sandbags, barbed — gameplay.md §6.3).
+
+The compiler (`src/track/compile.ts`, pure, runs in Node) validates closure, overlaps and the start piece, and produces 1 m centre-line samples (position, tangent, distance, curvature, surface, barricades), checkpoints, the spawn grid and bounds. The visual world (road ribbons per surface, barricades per type, start gantry) and the physics colliders are both generated from this data.
+
+**A6 (proposal):** cell = **20 m**, track width 14 m. A tight curve (size 1) has a 10 m radius — a real hairpin/chicane for these vehicles; size 2 and 3 are fast curves. At a 1:200 tabletop scale a cell is a 10 cm tile and a 5 m vehicle a 2.5 cm miniature. To be confirmed with the board game's tile size.
+
 ### 7.2 Progress & positions
 
 - Each sim step: project vehicle position onto the sampled centerline (search near the last index → O(1)).
@@ -282,6 +298,30 @@ A simple grid editor in the spirit of block-based track builders: the user place
 Editor implementation is scheduled **after M3** (M2/M3 use a hand-written test track JSON using the same block format).
 
 ---
+
+### 7.4 Race simulation core (implemented in M2)
+
+`src/sim/race-sim.ts` (`RaceSim`) owns the Rapier world, the vehicles, progress and race phases (countdown → running → finished). It has no rendering or DOM imports and is used unchanged by the game and the headless runner. Static colliders: ground slab and barrier walls every 4 m on both edges (taller than the visible barricades so cars are never launched out). Safety nets: auto-reposition after 2.5 s stuck/upside down or 1 s out of bounds; manual reposition action. Determinism: same inputs → identical positions (unit test).
+
+Vehicles (`src/vehicles/`): `gearbox.ts` (pure gear/push/brake logic) + `vehicle-physics.ts` (Rapier ray-cast vehicle controller with the arcade layer: engine force chases the gear target speed, push, surface grip/drag, rear-grip drift, upright assist; wheel rays ignore other vehicles). Tunables groups `handling`, `gearbox`, `race`.
+
+**No-glitch rules for the driving model** (the game is about strategy: the car must never tumble, fly or spin like a top):
+
+- Wheel rays only see the road (collision group `GROUND`), never barriers or vehicles: a ray that starts inside a barrier reads as a fully compressed suspension and launches the car.
+- The chassis collider covers the wheels, so a wheel never sinks into a barrier.
+- The **stabiliser** works on the angular velocity itself, so it is independent of mass and inertia: a critically damped spring (`handling.uprightAssist`, rad/s) keeps the body up axis on the ground normal (average of the wheel contact normals, world up while airborne), and roll/pitch and yaw rates are capped (`handling.maxTiltRate`, `handling.maxYawRate`) before and after the physics step. Never use `addTorque`/`addForce` for per-step control: in Rapier they persist and accumulate until reset.
+- Forces scale with the mass actually applied to the body; `handling.mass` is applied live (mass, inertia and suspension limits together).
+- Regression: `tests/unit/race-sim.test.ts` (barrier abuse at several masses) and `npx tsx tools/sim/stress.ts` (5 abusive drivers × 5 masses × 2 vehicles; no tumble, no flight, no reposition).
+
+**Track edges: the invisible rail** (`src/race/barricades.ts`, `RaceSim.applyRail`). The edge is a rule, not a geometry, so there is nothing to get stuck on: posts, bags and beams are visuals only.
+
+- After each physics step the vehicle is kept inside a lateral limit measured from the centre line: `halfWidth + inset(barricade) − reach`, where `reach` is how far the body box extends sideways at its current angle to the track. Velocity into the edge is removed and the body is moved back to the limit. The Rapier walls are only a safety net 2.6 m outside.
+- The **barricade type** of the piece side (one per side per piece, `left`/`right` in the track file, gameplay.md §6.3) selects the reaction. Tunables group `barricades`, per type: `scrapeSpeed` (engine target × while in contact: scraping is always slower than the clean line), `scrapeDrag`, `hitLoss` (speed lost in a glancing hit), `crashScale`; barbed wire also costs a gear.
+- First contact is classified from the velocity relative to the edge: **scrape** (slow approach), **hit** (glancing: speed loss, nose turned parallel at `barricades.alignRate` so the car always slides on), **crash** (frontal: speed into the edge ≥ `crashSpeed × crashScale` and angle ≥ `crashAngle`): full stop, 1st gear, engine off for `crashStun` while the nose turns back along the track.
+- Contact holds within `contactBand` of the limit and survives gaps shorter than `releaseTime`; a new hit needs `rehitTime` off the edge.
+- Every contact emits an `impact` sim event (`kind`: `scrape` every `scrapeTick` s, `hit`, `crash`, or `vehicle` for abrupt velocity changes from other cars; plus barricade, strength, point, normal). The game turns them into feedback now; **M3 turns the same events into damage** (PF per hit, PF per scrape tick on spikes).
+- Feedback (tunables group `feedback`, used for every impact): **sparks** (`src/render/fx/sparks.ts`: warm, hard-edged, tapered ink strokes redrawn at `sparkRedraw` fps; metal edges and vehicles), **dust** puffs (earth, sandbags) and **screen shake** (`FollowCamera.addShake/holdShake`: trauma model, amplitude/roll/frequency/decay and per-event strengths configurable, can be switched off).
+- **Surroundings follow the barricade**: `buildDressing` asks which barricade is on that side of the nearest piece and applies its theme (prop weights and density): riveted → foundry machinery, corrugated → depots and shacks, hedgehog → scrapyard and tank traps, sandbags → fortified post, earth → open wasteland with rocks, barbed → no man's land.
 
 ## 8. AI
 
@@ -317,7 +357,7 @@ Following the track tangent rather than the raw vehicle heading keeps the view c
 1. `new WebGPURenderer({ antialias: false })` → `await renderer.init()`; Three.js falls back to WebGL2 automatically when WebGPU is unavailable. Log the active backend.
 2. DPR capped: mobile 2.0 × render scale; desktop 1.0–2.0.
 3. Build the pipeline from doc 02 (MRT pass, outline, bloom, grade, AA) according to the quality tier.
-4. **Shader warm-up**: `renderer.compileAsync(scene, camera)` during the loading screen to avoid first-frame hitches.
+4. **Warm-up** during the loading screen (`Game.warmUp`), with frustum culling disabled so the whole track is covered: precompile through the **scene pass** (`PassNode.compileAsync`, i.e. the MRT program variants the real frame uses — `renderer.compileAsync(scene, camera)` alone compiles variants that are never used), then render two real frames (shadow pass, post chain, texture and buffer uploads) and the first HUD update. Nothing may compile after the countdown starts: vehicle rigs and their emitters are built once and reused across restarts, and the particle material is primed with one invisible sprite. Dynamic resolution ignores single frames over 250 ms and is reset at race start/resume. Check with `node tools/frame-probe.mjs <port>` (hitches at first start and after restarts).
 
 ### 10.2 Quality manager
 
@@ -433,6 +473,9 @@ iOS Safari tabs are killed above ~1–1.5 GB total; budget conservatively.
 
 ### 15.2 Simulation tooling (automated tests)
 
+Implemented in M2: `npx tsx tools/sim/run.ts [--racers 4] [--laps 3] [--track foundry-01] [--preset tuning.json] [--max 400] [--trace]` runs autopilot races ~250× faster than real time and prints JSON (lap times, best lap, top speed, repositions, off-track %, drift %, wrong-way %). `--preset` accepts the JSON exported from the `?debug` panel, so tuning made by a human can be checked automatically.
+
+
 - The simulation runs without the renderer (`core`, `physics`, `track`, `race`, `ai`, `rules` have no rendering imports, §3).
 - **Headless runner** `tools/sim` (Node CLI): runs N races AI-vs-AI (or recorded inputs) faster than real time with a given seed, track, vehicles and tunables preset; outputs JSON/CSV statistics (lap times, positions, collisions, boiler explosions, steam usage, stuck/respawn counts).
 - Used for balance checks, AI regression, determinism checks and in CI.
@@ -492,5 +535,5 @@ After M3: Grand Prix and economy, garage/upgrades, modules, full arsenal, cards 
 | A3 | Track authoring | ✅ **Decided (2026-11-12):** block-based grid editor + generated surroundings, compatible with tabletop tiles/miniatures (§7.3); after M3. |
 | A4 | Distribution | ✅ **Decided (2026-11-12):** PWA only. |
 | A5 | Gameplay reference | ✅ **Decided (2026-11-12):** [gameplay.md](gameplay.md); simple gameplay up to M3, advanced systems after. |
-| A6 | Block size vs tabletop tile size and vehicle scale | Open — check during M2. |
+| A6 | Block size vs tabletop tile size and vehicle scale | **Proposed in M2:** 20 m cells, 14 m track (§7.1.1). Confirm with the board game's tile size. |
 | A7 | Gameplay values (`rules` groups referenced in gameplay.md: gear speeds, PV costs, boiler timings, damage) | Open — ask the owner when the related features are implemented. |
