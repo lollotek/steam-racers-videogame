@@ -8,6 +8,8 @@
   --steam: #d8d2c8;
   --fire: #ff8a2a;
   --fire-core: #ffd27a;
+  --pip-grey: #8a8580;
+  --pip-red: #e0321e;
   --font: 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif;
 }
 
@@ -122,6 +124,55 @@ body {
   white-space: nowrap;
   font-size: 11px;
   opacity: 0.55;
+}
+
+/* Under-vehicle tag: gear + steam pips (src/ui/vehicle-tag.ts) */
+.vtag {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  pointer-events: none;
+  will-change: transform;
+}
+.vtag-gear {
+  min-width: 18px;
+  padding: 0 4px;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 18px;
+  text-align: center;
+  color: var(--ink);
+  background: linear-gradient(#c9a35d, var(--brass));
+  border: 2px solid var(--ink);
+  border-radius: 4px;
+}
+.vtag-gear.red {
+  color: #9b1d12;
+}
+.vtag-pips {
+  display: flex;
+  gap: 3px;
+}
+.pip {
+  --fill: 0%;
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--ink);
+  background: linear-gradient(to top, var(--pip-grey) var(--fill), rgba(27, 18, 16, 0.55) var(--fill));
+}
+.pip.ready {
+  background: var(--fire);
+  box-shadow: 0 0 4px var(--fire-core);
+}
+.pip.red {
+  background: var(--pip-red);
+  box-shadow: 0 0 4px var(--pip-red);
+}
+.pip.grey {
+  background: var(--pip-grey);
 }
 
 /* Overlays */
@@ -253,6 +304,45 @@ body {
   font-size: 16px;
   border-color: var(--fire);
   background: rgba(122, 74, 46, 0.75);
+}
+.tbtn.steam {
+  position: relative;
+}
+.tbtn-label {
+  position: relative;
+}
+/* Steam points on the STEAM button perimeter (see SteamRing) */
+.steam-ring {
+  position: absolute;
+  inset: -9px;
+  width: calc(100% + 18px);
+  height: calc(100% + 18px);
+  pointer-events: none;
+  overflow: visible;
+}
+.ring-seg {
+  fill: none;
+  stroke-width: 7;
+  stroke-linecap: butt;
+}
+.ring-seg.empty {
+  stroke: rgba(27, 18, 16, 0.75);
+}
+.ring-seg.regen,
+.ring-seg.grey {
+  stroke: var(--pip-grey);
+}
+.ring-seg.ready {
+  stroke: var(--fire);
+  filter: drop-shadow(0 0 3px var(--fire-core));
+}
+.ring-seg.red {
+  stroke: var(--pip-red);
+  filter: drop-shadow(0 0 3px var(--pip-red));
+}
+.tbtn.steam:has(.steam-ring:not(.usable)) {
+  border-color: var(--iron);
+  color: var(--pip-grey);
 }
 .tbtn.down {
   background: var(--brass);

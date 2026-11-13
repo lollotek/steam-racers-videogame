@@ -1,4 +1,5 @@
 import { signal } from '@preact/signals';
+import type { SteamReadout } from './steam-pips';
 
 /** UI-facing state, written by the game (throttled), read by Preact components. */
 export interface PlayerHud {
@@ -6,6 +7,7 @@ export interface PlayerHud {
   gear: number;
   speedKmh: number;
   pushReady: boolean;
+  steam: SteamReadout;
   device: string;
   identityColor: string;
 }

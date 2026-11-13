@@ -23,13 +23,20 @@ import { ParticleSystem, type Emitter } from '../render/fx/particles';
 import { FollowCamera } from './follow-camera';
 import { buildFoundry, type FoundryWorld } from './foundry-scene';
 import { buildHotRod, buildSteamTank, type VehicleRig } from './vehicles';
-import { type VehicleState, createVehicleState, stepVehicle } from './test-vehicle';
+import { type VehicleState, canPush, createVehicleState, stepVehicle } from './test-vehicle';
+import { VehicleTag } from '../ui/vehicle-tag';
+import type { SteamReadout } from '../ui/steam-pips';
 import { ui } from '../ui/state';
 
 /** Placeholder identity colors until S5 is decided (doc 02 §13.1). */
 export const IDENTITY_COLORS = ['#E8E2D0', '#D94848', '#3F7FE0', '#E0C040', '#4FBF6A', '#B060D0', '#40C8C0', '#E07A9A'];
 
 const ARENA_RADIUS = 175;
+
+tunables.registerGroup('hud', [
+  { key: 'hud.vehicleTag', type: 'boolean', default: true, label: 'Gear + steam under vehicle' },
+  { key: 'hud.tagOffset', type: 'number', default: 4, min: 0, max: 12, step: 0.25, unit: 'm', label: 'Tag offset behind vehicle' },
+]);
 
 tunables.registerGroup('showcase', [
   { key: 'showcase.aiSpeed', type: 'number', default: 16, min: 0, max: 40, step: 0.5, unit: 'm/s', label: 'Demo rival speed' },
@@ -45,6 +52,7 @@ export interface PlayerSlot {
   rig: VehicleRig;
   camera: FollowCamera;
   exhaust: Emitter[];
+  tag: VehicleTag;
 }
 
 interface Rival {
@@ -175,6 +183,7 @@ export class Game {
       rig,
       camera: new FollowCamera(1),
       exhaust: this.stackEmitters(rig),
+      tag: new VehicleTag(document.getElementById('ui') ?? document.body, index),
     });
   }
 
@@ -330,6 +339,7 @@ export class Game {
     this.world.update(simDt, this.tmp.set(cam.position.x, 0, cam.position.z).lerp(this.slots[0]!.rig.root.position, 0.7));
     this.particles.update(simDt, cam);
     this.render();
+    this.updateTags(followRival);
 
     if (!this.loop.paused && this.dynres.update(realDt * 1000)) this.applyPixelRatio();
     this.updateHud(tick.frameDt);
@@ -380,6 +390,28 @@ export class Game {
     r.setScissorTest(false);
   }
 
+  /** Placeholder boiler readout (M3: real boiler component). */
+  private steamOf(s: PlayerSlot): SteamReadout {
+    return { pv: s.state.pv, cal: tunables.get('boiler.cal'), regen: s.state.pvRegen, usable: canPush(s.state) };
+  }
+
+  /** Gear + steam pips pinned just behind (= below on screen) each player's vehicle. */
+  private updateTags(followRival: boolean): void {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const split = this.slots.length === 2;
+    const back = tunables.get('hud.tagOffset');
+    for (const s of this.slots) {
+      const vh = split ? h / 2 : h;
+      // Split viewports: slot 0 is rendered in the top half (see render()).
+      const vp = { left: 0, top: split ? s.index * vh : 0, width: w, height: vh };
+      const r = s.rig.root;
+      const anchor = { x: r.position.x - Math.sin(r.rotation.y) * back, y: 0, z: r.position.z - Math.cos(r.rotation.y) * back };
+      const visible = !this.loop.paused && !(followRival && s.index === 0) && tunables.get<boolean>('hud.vehicleTag');
+      s.tag.update(anchor, s.camera.camera, vp, s.state.gear, this.steamOf(s), visible);
+    }
+  }
+
   private updateHud(dt: number): void {
     this.fpsAcc.frames++;
     this.fpsAcc.time += dt;
@@ -394,7 +426,8 @@ export class Game {
       index: s.index,
       gear: s.state.gear,
       speedKmh: Math.round(Math.abs(s.state.speed) * 3.6),
-      pushReady: s.state.pushCooldown === 0,
+      pushReady: canPush(s.state),
+      steam: this.steamOf(s),
       device: s.input.lastDevice,
       identityColor: IDENTITY_COLORS[s.index] ?? '#ffffff',
     }));
@@ -413,6 +446,7 @@ export class Game {
       players: this.slots.map((s) => ({
         gear: s.state.gear,
         pushCooldown: s.state.pushCooldown,
+        pv: s.state.pv,
         speed: s.state.speed,
         x: s.state.x,
         z: s.state.z,

@@ -34,6 +34,21 @@ describe('M0 gear-based placeholder vehicle', () => {
     expect(s.gear).toBe(3);
   });
 
+  it('placeholder boiler: push costs PV, no push without steam, PV regenerate up to CAL', () => {
+    const s = createVehicleState();
+    s.pv = 1;
+    const push = frame((f) => (f.pressed.steamPush = true));
+    stepVehicle(s, push, DT);
+    expect(s.gear).toBe(2);
+    expect(s.pv).toBe(0);
+    s.pushCooldown = 0;
+    expect(stepVehicle(s, push, DT).pushed).toBe(false); // no steam
+    expect(s.gear).toBe(2);
+    runFor(s, tunables.get<number>('boiler.regenTime') * tunables.get<number>('boiler.cal') + 1);
+    expect(s.pv).toBe(tunables.get('boiler.cal'));
+    expect(s.pvRegen).toBe(0);
+  });
+
   it('never goes above 6th gear', () => {
     const s = createVehicleState();
     const push = frame((f) => (f.pressed.steamPush = true));

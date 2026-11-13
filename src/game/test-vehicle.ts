@@ -24,6 +24,18 @@ tunables.registerGroup('vehicle', [
   { key: 'vehicle.steerResponse', type: 'number', default: 10, min: 1, max: 40, step: 0.5, unit: '1/s', label: 'Steer response' },
 ]);
 
+/**
+ * TEMPORARY placeholder boiler (gameplay.md §5.2), replaced by the real rules layer in M3:
+ * PV regenerate passively up to CAL, each steam push costs PV, no push without steam.
+ * No red zone, pressure or reliability test yet (PV above CAL only via the debug panel).
+ */
+tunables.registerGroup('boiler', [
+  { key: 'boiler.cal', type: 'number', default: 5, min: 1, max: 10, step: 1, unit: 'PV', label: 'CAL (placeholder)' },
+  { key: 'boiler.startPv', type: 'number', default: 3, min: 0, max: 20, step: 1, unit: 'PV', label: 'Start PV (placeholder)' },
+  { key: 'boiler.regenTime', type: 'number', default: 1.5, min: 0.1, max: 10, step: 0.1, unit: 's/PV', label: 'Passive regen (placeholder)' },
+  { key: 'boiler.pushCost', type: 'number', default: 1, min: 0, max: 5, step: 1, unit: 'PV', label: 'Push cost (placeholder)' },
+]);
+
 export interface VehicleState {
   x: number;
   z: number;
@@ -37,10 +49,19 @@ export interface VehicleState {
   pushTimer: number;
   pushCooldown: number;
   gearDownHeld: number;
+  /** Placeholder boiler (M3 replaces it): steam points and progress (0..1) of the next passive PV. */
+  pv: number;
+  pvRegen: number;
 }
 
 export function createVehicleState(x = 0, z = 0, heading = 0): VehicleState {
-  return { x, z, heading, speed: 0, gear: 1, steer: 0, pushTimer: 0, pushCooldown: 0, gearDownHeld: 0 };
+  const pv = tunables.get<number>('boiler.startPv');
+  return { x, z, heading, speed: 0, gear: 1, steer: 0, pushTimer: 0, pushCooldown: 0, gearDownHeld: 0, pv, pvRegen: 0 };
+}
+
+/** True when a steam push would fire now (no cooldown, enough PV). */
+export function canPush(s: VehicleState): boolean {
+  return s.pushCooldown === 0 && s.pv >= tunables.get<number>('boiler.pushCost');
 }
 
 export interface StepResult {
@@ -54,10 +75,24 @@ export function stepVehicle(s: VehicleState, input: ActionFrame, dt: number, are
   const res: StepResult = { gearChanged: false, pushed: false };
   const maxSpeed = t('vehicle.maxSpeed');
 
-  // Steam push: extra acceleration + one gear up (gameplay.md §5.1). PV cost comes with the boiler (M3).
+  // Placeholder boiler: passive regen up to CAL (M3 replaces it).
+  const cal = t('boiler.cal');
+  if (s.pv < cal) {
+    s.pvRegen += dt / t('boiler.regenTime');
+    while (s.pvRegen >= 1 && s.pv < cal) {
+      s.pvRegen -= 1;
+      s.pv++;
+    }
+    if (s.pv >= cal) s.pvRegen = 0;
+  } else {
+    s.pvRegen = 0;
+  }
+
+  // Steam push: extra acceleration + one gear up, paid with PV (gameplay.md §5.1).
   s.pushCooldown = Math.max(0, s.pushCooldown - dt);
   s.pushTimer = Math.max(0, s.pushTimer - dt);
-  if (input.pressed.steamPush && s.pushCooldown === 0) {
+  if (input.pressed.steamPush && canPush(s)) {
+    s.pv -= t('boiler.pushCost');
     s.pushTimer = t('vehicle.pushDuration');
     s.pushCooldown = t('vehicle.pushCooldown');
     res.pushed = true;

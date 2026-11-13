@@ -57,3 +57,15 @@ Compare against `refs/engine/engine (1).jpg` and `engine (4).jpg` (doc 02 §16).
 
 - [ ] Same look at Medium tier, ≥ 30 fps stable on a mid-range 2021 phone.
 - [ ] First load: shader warm-up time (console `[render] shaders compiled in … ms`) acceptable (< 10 s).
+
+## Driver feedback — gear + steam under the vehicle
+
+Placeholder boiler until M3 (tunables group `boiler`: CAL 5, start 3 PV, 1 PV every 1.5 s, push costs 1 PV).
+
+- [ ] Under the player's vehicle: brass gear number on the left, then CAL steam squares. Lit orange = spendable; grey = push cooling down; dark = empty, the next one fills up grey while it regenerates.
+- [ ] With 0 PV the push does not fire and the gear does not change.
+- [ ] `?debug` → set `boiler.startPv` above CAL and reload: extra squares on the right are red.
+- [ ] Gear 5–6 shown in red, as on the HUD plate.
+- [ ] Touch: the STEAM button perimeter shows the same squares as arcs; the button border/label dims while the push is not usable.
+- [ ] `?players=2`: each player has its own tag under its own vehicle.
+- [ ] `hud.vehicleTag` (debug) hides the tag; `hud.tagOffset` moves it.
