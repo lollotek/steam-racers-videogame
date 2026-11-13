@@ -1,6 +1,7 @@
 import { ui, formatTime, type PlayerHud } from './state';
 import { TouchControls } from './TouchControls';
 import { Controls } from './Controls';
+import { enterFullscreen } from './fullscreen';
 import type { TouchSource } from '../input/touch';
 
 interface Props {
@@ -80,7 +81,12 @@ export function App({ touch, onResume, onRestart }: Props) {
           </div>
         </div>
       )}
-      <div class="rotate-hint">Rotate the device to landscape</div>
+      <div class="rotate-hint" data-testid="rotate-hint" onPointerUp={() => void enterFullscreen()}>
+        <div>
+          <p>Rotate the device to landscape</p>
+          <p class="dim">or tap to play fullscreen</p>
+        </div>
+      </div>
     </div>
   );
 }

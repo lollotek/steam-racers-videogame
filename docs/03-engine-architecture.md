@@ -524,6 +524,16 @@ Implemented in M2, extended in M3: `npx tsx tools/sim/run.ts [--racers 4] [--lap
 
 ---
 
+### 16.1 Phone performance (measured, M3)
+
+Realme RMX3370 (Snapdragon 870, Android 13, Chrome 157, WebGPU), Medium tier, 4 cars racing, `tools/phone/perf.ts` (CPU time per frame on the JS main thread; GPU work is not the limit: halving the resolution changes almost nothing).
+
+- **The cost is CPU per draw call** in three.js WebGPU (`renderObject`: uniforms, bind groups, buffers). Profile (`--profile`): ~71 % of the frame in `renderObject`, sim + AI + rules ~3 %.
+- **Bug found and fixed:** the six furnace point lights cast shadows (a `traverse` set `castShadow` on every child, lights included): six cube-map faces each, ~1380 extra draws per frame. Before: 10.6 fps, 75 ms CPU, 47 s shader warm-up. After: ~53–55 fps, ~15 ms CPU, ~15 s to ready. Rule: only meshes get `castShadow`; any new shadow-casting light needs an explicit budget.
+- **Sun shadow refreshed every 2nd frame on phones** (`quality.shadowEvery`, default 2 mobile / 1 PC): −3 ms CPU, no more 33 ms frames (p95 33 → 17 ms); moving shadows lag one frame.
+- Cost of each effect (ms CPU per frame removed when switched off, baseline ~15–16 ms): bloom ~3, dressing props ~3, outlines ~1.3, FXAA ~1.2, particles + sparks ~1.4, simulation ~1, hatching ~0, half resolution ~0.4. Fullscreen vs browser window: no measurable difference.
+- Switching the sun shadow off at runtime recompiles every material (multi-second stall): change it only from menus/loading.
+
 ## 17. Build & deploy
 
 - `vite build` → static files; deploy to any static host/CDN.

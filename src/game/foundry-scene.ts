@@ -326,6 +326,7 @@ export function buildFoundry(tex: ProceduralSet, seed: number, track: CompiledTr
     gantry.position.set(smp.x, 0, smp.z);
     gantry.rotation.y = yaw;
     gantry.traverse((o) => {
+      if (!(o as Mesh).isMesh) return;
       o.castShadow = true;
       o.receiveShadow = true;
     });
@@ -440,7 +441,10 @@ export function buildFoundry(tex: ProceduralSet, seed: number, track: CompiledTr
   const place = (o: Object3D, x: number, z: number, ry = 0) => {
     o.position.set(x, 0, z);
     o.rotation.y = ry;
+    // Meshes only: a light in the group must not cast shadows (a point light shadow is a cube map,
+    // six extra renders of the scene per frame).
     o.traverse((c) => {
+      if (!(c as Mesh).isMesh) return;
       c.castShadow = true;
       c.receiveShadow = true;
     });

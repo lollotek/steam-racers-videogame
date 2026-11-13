@@ -149,6 +149,9 @@ export class Game {
       { key: 'quality.tier', type: 'option', default: opts.tier, options: ['low', 'medium', 'high', 'ultra'], label: 'Tier' },
       { key: 'quality.dynamicResolution', type: 'boolean', default: true, label: 'Dynamic resolution' },
       { key: 'quality.targetFps', type: 'number', default: isMobile ? 30 : 60, min: 20, max: 144, step: 1, label: 'Target FPS' },
+      // The sun shadow map is a second render of ~300 casters; refreshing it every other frame costs
+      // a one-frame lag on moving shadows and saves ~3 ms CPU per frame on phones (tools/phone/perf.ts).
+      { key: 'quality.shadowEvery', type: 'number', default: isMobile ? 2 : 1, min: 1, max: 4, step: 1, unit: 'frames', label: 'Sun shadow refresh every' },
     ]);
     tunables.registerGroup('sim', [{ key: 'sim.timeScale', type: 'number', default: 1, min: 0, max: 4, step: 0.05, label: 'Time scale' }]);
 
@@ -640,6 +643,10 @@ export class Game {
   }
 
   private render(): void {
+    const shadow = this.world.keyLight.shadow;
+    const every = tunables.get<number>('quality.shadowEvery');
+    shadow.autoUpdate = every <= 1;
+    if (every > 1) shadow.needsUpdate = this.frames % every === 0;
     if (this.pipelines.length === 1) {
       this.pipelines[0]!.render();
       return;

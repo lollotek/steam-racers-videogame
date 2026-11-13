@@ -8,12 +8,15 @@ import { App } from './ui/App';
 import { ui } from './ui/state';
 import { tunables } from './core/tunables';
 import { initPhysics } from './sim/race-sim';
+import { installAutoFullscreen } from './ui/fullscreen';
 
 async function boot(): Promise<void> {
   const flags = parseFlags(location.search);
   const isMobile = isMobileDevice(navigator, window);
   const coarse = window.matchMedia?.('(pointer: coarse)').matches ?? false;
   ui.showTouch.value = flags.touch ?? (isMobile || coarse);
+  // Phones: the first tap goes fullscreen and locks landscape (?fullscreen=0 to disable).
+  if ((isMobile || coarse) && flags.fullscreen) installAutoFullscreen();
 
   const touch = new TouchSource();
   const uiRoot = document.getElementById('ui')!;

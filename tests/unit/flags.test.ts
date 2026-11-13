@@ -13,6 +13,7 @@ describe('parseFlags', () => {
       touch: null,
       test: false,
       laps: null,
+      fullscreen: true,
     });
   });
 

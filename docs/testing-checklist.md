@@ -8,6 +8,9 @@
 
 - Dev server reachable from the phone: `npm run dev` prints a LAN URL (`--host` is on). Phone and PC on the same network.
 - WebGPU needs a secure context: `localhost` is fine on PC; from the phone use the HTTPS preview build or a tunnel.
+- **Automated real-phone run (Android):** `npm run test:phone -- --adb D:\programmi\scrcpy-win64-v3.3.4\adb.exe --serial IP:PORT` drives Chrome on the phone over ADB (Playwright): WebGPU backend, boot/warm-up time, FPS during an autopilot lap at Medium, STEAM touch button, console errors, screenshots in `tools/phone/out/`. One-time setup: Developer options → Wireless debugging → Pair device with pairing code, then `adb pair IP:PAIR_PORT CODE`; the connect port is shown on the same screen. `adb reverse` serves the PC dev server as the phone's `localhost` (secure context: WebGPU without HTTPS). Feel, readability and real touch handling still need a human.
+- **Phone performance probe:** `npx tsx tools/phone/perf.ts --adb … --serial IP[:PORT]` measures FPS and CPU time per frame part with each effect switched off in turn (`--only a,b`, `--fullscreen` taps into fullscreen first, `--profile 5` records a CPU profile and prints the hottest functions). Results and findings: doc 03 §16.1. Let the phone cool down between runs (results drift when it is hot).
+- Phones enter fullscreen and lock landscape on the first tap (browsers allow it only after a gesture; the portrait hint says "tap to play fullscreen"); `?fullscreen=0` disables it. An installed PWA starts fullscreen.
 - Add `?debug` to open the tuning panel. Useful flags: `?tier=low`, `?backend=webgl2`, `?players=2`, `?touch=1`, `?seed=123`.
 
 ## M0 — Setup

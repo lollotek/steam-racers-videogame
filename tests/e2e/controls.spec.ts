@@ -92,12 +92,14 @@ test.describe('touch (mobile)', () => {
     const box = (await pad.boundingBox())!;
     const x = box.x + box.width / 2;
     const y = box.y + box.height / 2;
-    const h0 = (await snapshot(page)).players[0]!.heading;
     // Pointer events with touch type (CDP touch is not routed as pointer drag by Playwright's mouse).
     await pad.dispatchEvent('pointerdown', { pointerId: 7, pointerType: 'touch', clientX: x, clientY: y, isPrimary: true });
     await pad.dispatchEvent('pointermove', { pointerId: 7, pointerType: 'touch', clientX: x + 80, clientY: y, isPrimary: true });
-    await page.waitForTimeout(600);
+    // The vehicle's smoothed steering goes right while the finger is held (position independent:
+    // after the calm time the car may already be in the first bend).
+    const steer = () => page.evaluate(() => (window as unknown as { __steamRacers: { game: { sim: { racers: { vehicle: { gearbox: { steer: number } } }[] } } } }).__steamRacers.game.sim.racers[0]!.vehicle.gearbox.steer);
+    await expect.poll(steer).toBeGreaterThan(0.5);
     await pad.dispatchEvent('pointerup', { pointerId: 7, pointerType: 'touch', clientX: x + 80, clientY: y, isPrimary: true });
-    expect((await snapshot(page)).players[0]!.heading).toBeLessThan(h0);
+    await expect.poll(steer).toBeLessThan(0.1);
   });
 });

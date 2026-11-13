@@ -340,7 +340,11 @@ body {
     background: var(--ink);
     color: var(--brass);
     font-size: 20px;
+    text-align: center;
     pointer-events: auto;
+  }
+  .rotate-hint p {
+    margin: 6px;
   }
 }
 
