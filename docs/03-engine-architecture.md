@@ -565,5 +565,5 @@ After M3: Grand Prix and economy, garage/upgrades, modules, full arsenal, cards 
 | A3 | Track authoring | ✅ **Decided (2026-11-12):** block-based grid editor + generated surroundings, compatible with tabletop tiles/miniatures (§7.3); after M3. |
 | A4 | Distribution | ✅ **Decided (2026-11-12):** PWA only. |
 | A5 | Gameplay reference | ✅ **Decided (2026-11-12):** [gameplay.md](gameplay.md); simple gameplay up to M3, advanced systems after. |
-| A6 | Block size vs tabletop tile size and vehicle scale | **Proposed in M2:** 20 m cells, 14 m track (§7.1.1). Confirm with the board game's tile size. |
-| A7 | Gameplay values (`rules` groups referenced in gameplay.md: gear speeds, PV costs, boiler timings, damage) | **Open — needed now (M3 implemented with placeholders):** vehicle CAL/AFF/RES/MAN, ignition PV and passive generation (also above CAL?), pressure and test timings, outcome damage, start test band and outcomes, edge damage per barricade, ramming formula, cannon damage/zones/cone/ammo. All are tunables (`stats`, `boiler`, `start`, `hull`, `weapons`) and listed in §7.5. |
+| A6 | Block size vs tabletop tile size and vehicle scale | ✅ **Decided (2026-11-13):** keep 20 m cells and a 14 m track (§7.1.1); the requirement is that 4 vehicles fit side by side, which the current width satisfies. |
+| A7 | Gameplay values (`rules` groups referenced in gameplay.md: gear speeds, PV costs, boiler timings, damage) | ✅ **Decided (2026-11-13):** keep the current placeholder values (all tunable via `?debug`, §7.5); adjust them after playtests. |
