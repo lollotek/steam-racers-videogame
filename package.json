@@ -23,6 +23,8 @@
     "tweakpane": "^4.0.5"
   },
   "devDependencies": {
+    "@emnapi/core": "2.0.0-beta.2",
+    "@emnapi/runtime": "2.0.0-beta.2",
     "@playwright/test": "^1.65.0",
     "@preact/preset-vite": "^2.10.6",
     "@tweakpane/core": "^2.0.5",
