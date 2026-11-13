@@ -9,8 +9,11 @@ import { ui } from './ui/state';
 import { tunables } from './core/tunables';
 import { initPhysics } from './sim/race-sim';
 import { installAutoFullscreen } from './ui/fullscreen';
+import { registerSW } from 'virtual:pwa-register';
 
 async function boot(): Promise<void> {
+  // autoUpdate: a new deploy's service worker takes over and the page reloads once, so players never run stale cached code.
+  if (import.meta.env.PROD) registerSW({ immediate: true });
   const flags = parseFlags(location.search);
   const isMobile = isMobileDevice(navigator, window);
   const coarse = window.matchMedia?.('(pointer: coarse)').matches ?? false;

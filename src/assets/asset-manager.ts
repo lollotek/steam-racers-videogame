@@ -6,7 +6,7 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
 /**
  * Asset manager skeleton (doc 03 §11.1): manifests with byte sizes for progress,
- * reference counting and disposal. KTX2 transcoder files are served from /basis/ (added in M1).
+ * reference counting and disposal. KTX2 transcoder files are served from <base>/basis/ (added in M1).
  */
 export interface ManifestEntry {
   id: string;
@@ -27,6 +27,12 @@ interface Entry {
   value: Loaded;
 }
 
+/** Resolves a site-relative URL ('/models/x.glb' or 'models/x.glb') against the deploy base (e.g. GitHub Pages sub-path). */
+export function assetUrl(url: string): string {
+  if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(url)) return url; // absolute / data: / blob:
+  return import.meta.env.BASE_URL + url.replace(/^\/+/, '');
+}
+
 export type ProgressFn = (loadedBytes: number, totalBytes: number) => void;
 
 export class AssetManager {
@@ -34,7 +40,7 @@ export class AssetManager {
   private cache = new Map<string, Entry>();
   private inflight = new Map<string, Promise<Loaded>>();
 
-  constructor(renderer: WebGPURenderer, basisPath = '/basis/') {
+  constructor(renderer: WebGPURenderer, basisPath = assetUrl('basis/')) {
     const ktx2 = new KTX2Loader().setTranscoderPath(basisPath);
     ktx2.detectSupport(renderer);
     this.gltf = new GLTFLoader().setKTX2Loader(ktx2).setMeshoptDecoder(MeshoptDecoder);
@@ -97,8 +103,8 @@ export class AssetManager {
   }
 
   private async load(entry: ManifestEntry): Promise<Loaded> {
-    if (entry.type === 'gltf') return { kind: 'gltf', data: await this.gltf.loadAsync(entry.url) };
-    const res = await fetch(entry.url);
+    if (entry.type === 'gltf') return { kind: 'gltf', data: await this.gltf.loadAsync(assetUrl(entry.url)) };
+    const res = await fetch(assetUrl(entry.url));
     if (!res.ok) throw new Error(`Failed to load ${entry.url}: ${res.status}`);
     return { kind: 'json', data: await res.json() };
   }
