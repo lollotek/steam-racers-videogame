@@ -114,6 +114,12 @@ export class ParticleSystem {
     return e;
   }
 
+  /** One-shot puff (impacts): `count` particles with the emitter's settings, no emitter kept. */
+  burst(o: EmitterOptions, count: number): void {
+    const e: Emitter = { velocity: { x: 0, y: 2, z: 0 }, spread: 0.6, life: [2.5, 4], size: [1.2, 4.5], ...o, acc: 0, enabled: true };
+    for (let i = 0; i < count; i++) this.spawn(e);
+  }
+
   private spawn(e: Emitter): void {
     if (this.alive >= Math.min(MAX, tunables.get('fx.particleBudget'))) return;
     const i = this.alive++;
@@ -193,6 +199,14 @@ export class ParticleSystem {
     this.posAttr.needsUpdate = true;
     this.dataAttr.needsUpdate = true;
     (this.sprite as N).count = n;
+  }
+
+  /** Draw one invisible particle so the sprite material compiles during warm-up, not at the first puff. */
+  prime(): void {
+    if (this.alive > 0) return;
+    (this.dataAttr.array as Float32Array).fill(0, 0, 4);
+    this.dataAttr.needsUpdate = true;
+    (this.sprite as N).count = 1;
   }
 
   get count(): number {

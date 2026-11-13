@@ -7,6 +7,7 @@ import { Game } from './game/game';
 import { App } from './ui/App';
 import { ui } from './ui/state';
 import { tunables } from './core/tunables';
+import { initPhysics } from './sim/race-sim';
 
 async function boot(): Promise<void> {
   const flags = parseFlags(location.search);
@@ -17,8 +18,9 @@ async function boot(): Promise<void> {
   const touch = new TouchSource();
   const uiRoot = document.getElementById('ui')!;
   let game: Game | null = null;
-  render(h(App, { touch, onResume: () => game?.setPaused(false) }), uiRoot);
+  render(h(App, { touch, onResume: () => game?.setPaused(false), onRestart: () => game?.startRace() }), uiRoot);
 
+  await initPhysics();
   const gfx = await createRenderer(document.getElementById('viewport')!, flags.forceWebGL);
   ui.backend.value = gfx.backend;
 
@@ -35,6 +37,7 @@ async function boot(): Promise<void> {
 
   game = new Game(gfx, { flags, isMobile, tier, touch });
   await game.warmUp();
+  ui.loading.value = false;
   game.start();
 
   if (import.meta.env.DEV || flags.test) {
@@ -49,5 +52,6 @@ async function boot(): Promise<void> {
 
 boot().catch((e: unknown) => {
   console.error(e);
+  ui.loading.value = false;
   ui.error.value = e instanceof Error ? e.message : String(e);
 });

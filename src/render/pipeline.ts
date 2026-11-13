@@ -99,6 +99,12 @@ export class InkPipeline {
     U.resolutionScale.value = h / 1080;
   }
 
+  /** Precompile the scene-pass programs (MRT variants) without blocking where the backend allows it. */
+  async compileAsync(): Promise<void> {
+    if (this.dirty) this.rebuild();
+    await this.scenePass.compileAsync(this.renderer);
+  }
+
   render(): void {
     if (this.dirty) this.rebuild();
     this.pipeline.render();

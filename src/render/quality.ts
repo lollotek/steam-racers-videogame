@@ -56,6 +56,7 @@ export function isMobileDevice(nav: Navigator, win: Window): boolean {
  * raises it when frames are comfortably fast for `upAfter` seconds. Never changes features, only scale.
  */
 export class DynamicResolution {
+  static readonly HITCH_MS = 250;
   scale: number;
   enabled = true;
   targetFps: number;
@@ -83,6 +84,12 @@ export class DynamicResolution {
     this.slowTime = this.fastTime = 0;
   }
 
+  /** Forget the frame history (race start, resume): loading hitches are not GPU load. */
+  reset(): void {
+    this.avgMs = 1000 / this.targetFps;
+    this.slowTime = this.fastTime = 0;
+  }
+
   get averageMs(): number {
     return this.avgMs;
   }
@@ -90,6 +97,9 @@ export class DynamicResolution {
   /** Feed a frame duration; returns true when the scale changed. */
   update(frameMs: number): boolean {
     if (!this.enabled) return false;
+    // A single very long frame is a hitch (shader compile, GC, tab switch), not sustained load:
+    // lowering the resolution for it would only add a second hitch (render targets reallocated).
+    if (frameMs > DynamicResolution.HITCH_MS) return false;
     const dt = frameMs / 1000;
     this.avgMs += (frameMs - this.avgMs) * 0.1; // EMA
     const budget = 1000 / this.targetFps;
