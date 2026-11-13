@@ -125,6 +125,7 @@ Goal (doc 03 §18): complete 3-lap race vs 3 AI at target FPS on both device cla
 ### Phone
 
 - [ ] Touch: VENT and FIRE buttons work; the start meter and the boiler test are readable above the controls.
-- [ ] HUD strip fits in landscape without covering the minimap / leaderboard.
+- [ ] Nothing overlaps in landscape (browser window and fullscreen): HUD column top left, steer pad bottom left, minimap top right, ⟲ / VENT / FIRE above GEAR − / STEAM, pause II top centre, start meter and boiler test bottom centre. The leaderboard is hidden on short screens.
+- [ ] The gear + steam tag stays centred under the car through every bend, and is always below overlays (pause, results, loading).
 - [ ] Complete 3-lap race vs 3 AI at ≥ 30 fps (Medium).
 

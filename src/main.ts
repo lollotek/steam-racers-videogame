@@ -15,6 +15,8 @@ async function boot(): Promise<void> {
   const isMobile = isMobileDevice(navigator, window);
   const coarse = window.matchMedia?.('(pointer: coarse)').matches ?? false;
   ui.showTouch.value = flags.touch ?? (isMobile || coarse);
+  // Compact HUD layout for phones / touch screens (styles.css `body.touch-ui`).
+  document.body.classList.toggle('touch-ui', ui.showTouch.value);
   // Phones: the first tap goes fullscreen and locks landscape (?fullscreen=0 to disable).
   if ((isMobile || coarse) && flags.fullscreen) installAutoFullscreen();
 

@@ -54,7 +54,7 @@ const RIVAL_NAMES = ['Player One', 'Rosso', 'Blu', 'Giallo', 'Verde', 'Viola', '
 
 tunables.registerGroup('hud', [
   { key: 'hud.vehicleTag', type: 'boolean', default: true, label: 'Gear + steam under vehicle' },
-  { key: 'hud.tagOffset', type: 'number', default: 4, min: 0, max: 12, step: 0.25, unit: 'm', label: 'Tag offset behind vehicle' },
+  { key: 'hud.tagOffset', type: 'number', default: 2.6, min: 0, max: 8, step: 0.1, unit: 'm', label: 'Tag distance below the vehicle (screen down)' },
 ]);
 
 tunables.registerGroup('showcase', [
@@ -182,7 +182,7 @@ export class Game {
     for (let i = 0; i < this.players; i++) this.addSlot(i);
 
     this.startRace();
-    this.minimap = new Minimap(document.getElementById('ui') ?? document.body, this.sim.track);
+    this.minimap = new Minimap(worldUi(), this.sim.track);
 
     this.gfx.renderer.shadowMap.enabled = true;
     this.pipelines = this.slots.map((s) => new InkPipeline(gfx.renderer, this.scene, s.camera.camera, { noise: this.tex.noise, paper: this.tex.paper }));
@@ -203,7 +203,7 @@ export class Game {
     } else {
       sources.push(new KeyboardSource(`kb-p${index + 1}`, index === 0 ? P1_KEYS : P2_KEYS), new GamepadSource(index));
     }
-    const parent = document.getElementById('ui') ?? document.body;
+    const parent = worldUi();
     const tag = new VehicleTag(parent, index);
     const gauges = new PlayerGauges(parent, index);
     this.slots.push({ index, input: new PlayerInput(index, sources), camera: new FollowCamera(1), camYaw: 0, tag, gauges, banners: [] });
@@ -738,10 +738,10 @@ export class Game {
       s.gauges.update(this.gaugeFrame(s, vp));
       const r = this.sim.racers[s.index]!;
       const root = this.views[s.index]!.rig.root;
-      const yaw = r.vehicle.heading();
-      const anchor = { x: root.position.x - Math.sin(yaw) * back, y: root.position.y, z: root.position.z - Math.cos(yaw) * back };
+      // Centred below the vehicle on screen whatever its heading: offset along the screen's down.
+      const anchor = { x: root.position.x, y: root.position.y, z: root.position.z };
       const visible = !this.loop.paused && !(followRival && s.index === 0) && !ui.loading.value && !r.vehicle.wrecked && tunables.get<boolean>('hud.vehicleTag');
-      s.tag.update(anchor, s.camera.camera, vp, r.vehicle.gearbox.gear, this.steamOf(r.vehicle.gearbox), visible);
+      s.tag.update(anchor, back, s.camera.camera, vp, r.vehicle.gearbox.gear, this.steamOf(r.vehicle.gearbox), visible);
     }
   }
 
@@ -834,6 +834,11 @@ export class Game {
       }),
     };
   }
+}
+
+/** Layer for per-frame, world-anchored UI: below every #ui overlay (results, pause, loading). */
+function worldUi(): HTMLElement {
+  return document.getElementById('world-ui') ?? document.getElementById('ui') ?? document.body;
 }
 
 function shortAngle(a: number): number {

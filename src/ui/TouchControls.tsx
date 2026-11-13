@@ -7,25 +7,19 @@ import { PIP_CHAR, steamPips } from './steam-pips';
 
 /**
  * On-screen controls (gameplay.md Appendix): left steering pad, big steam-push button,
- * "Gear −" pedal (hold = brake), vent, weapons, cards, reposition, pause.
+ * "Gear −" pedal (hold = brake), vent, front cannon, reposition, pause.
+ * Only actions that exist today get a button: cards, rear weapon and turret come after M3.
  */
 export function TouchControls({ source }: { source: TouchSource }) {
   return (
     <div class="touch-controls" data-testid="touch-controls">
       <SteerPad source={source} />
+      <TouchButton source={source} button="pause" label="II" cls="pause-btn" />
       <div class="touch-right">
         <div class="touch-row small">
-          <TouchButton source={source} button="card1" label="1" />
-          <TouchButton source={source} button="card2" label="2" />
-          <TouchButton source={source} button="card3" label="3" />
           <TouchButton source={source} button="reposition" label="⟲" />
-          <TouchButton source={source} button="pause" label="II" />
-        </div>
-        <div class="touch-row small">
-          <TouchButton source={source} button="fireRear" label="REAR" />
-          <TouchButton source={source} button="fireTurret" label="TUR" />
-          <TouchButton source={source} button="fireFront" label="FIRE" />
           <TouchButton source={source} button="vent" label="VENT" />
+          <TouchButton source={source} button="fireFront" label="FIRE" />
         </div>
         <div class="touch-row big">
           <TouchButton source={source} button="gearDown" label="GEAR −" cls="pedal" />

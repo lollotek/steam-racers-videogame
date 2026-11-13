@@ -1,12 +1,16 @@
 import { expect, test } from '@playwright/test';
-import { boot, snapshot } from './helpers';
+import { boot, isMobileProject, snapshot } from './helpers';
 
 type Hook = { __steamRacers: { tunables: { set(k: string, v: unknown): void } } };
 
 test('M2 race: countdown, HUD, one lap on autopilot, results and restart', async ({ page }) => {
   test.setTimeout(300_000);
   const errors = await boot(page, 'laps=1&tier=low');
-  await expect(page.getByTestId('leaderboard')).toBeVisible();
+  // Phones (short landscape screens) hide the leaderboard: the position is in the HUD.
+  if (isMobileProject(test.info().project.name)) {
+    await expect(page.getByTestId('leaderboard')).toBeHidden();
+    await expect(page.getByTestId('minimap')).toBeVisible();
+  } else await expect(page.getByTestId('leaderboard')).toBeVisible();
   await expect(page.getByTestId('lap-p1')).toHaveText('1');
   // Let the autopilot drive the player, simulation sped up (fixed step: same physics, more steps per frame).
   await page.evaluate(() => {
