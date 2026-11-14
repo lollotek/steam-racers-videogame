@@ -1,6 +1,6 @@
 # 03 — Engine Architecture
 
-> Status: **v0.2** — A1–A5 decided (2026-11-12).
+> Status: **v0.3** (2026-11-14) — A1–A7 decided; M4 biome system, track format v2 and Cup flow documented (§7.1.1, §7.6, §14, §18).
 > Depends on: [00 — World & Lore](00-world-lore.md), [01 — Engine & Visual Direction](01-engine-visual-direction.md), [02 — Shader & Style Spec](02-shader-style-spec.md), [gameplay.md](gameplay.md) (gameplay reference).
 > Purpose: define the code structure, runtime model and tooling so development can start.
 > Key constraints from earlier decisions: Three.js `WebGPURenderer` + TSL with WebGL2 fallback (D3), rotating 3/4 camera (D2), mid-range 2021 phone at 30 fps (D4), **4–8 racers (default 4), 2-player split screen on PC only** (D5), foundry biome first (D6), **PWA only** (A4).
@@ -51,7 +51,9 @@ steam-racers-videogame/
 ├─ tools/
 │  ├─ tam-generator/         procedural hatching TAM, paper, noise textures (doc 02 §4.1)
 │  ├─ asset-pipeline/        gltf-transform scripts: compression, KTX2, validation
-│  └─ sim/                   headless race runner (CLI) for balance/AI tests (§15.2)
+│  ├─ sim/                   headless race runner (CLI) for balance/AI tests (§15.2)
+│  ├─ track/                 track rules report (`npm run check:tracks`)
+│  └─ phone/                 real-phone probes over adb (perf, Cup flow)
 ├─ src/
 │  ├─ main.ts                entry point
 │  ├─ core/                  loop, time, events, rng, pools, math utils, config loader
@@ -65,7 +67,13 @@ steam-racers-videogame/
 │  ├─ assets/                asset manager, manifests, loaders
 │  ├─ physics/               Rapier world, collision groups, vehicle controller wrapper
 │  ├─ vehicles/              vehicle definitions, sim model, visual rig
-│  ├─ track/                 track data, spline sampling, progress, checkpoints
+│  ├─ track/                 track format, compiler, hazards, shared track rules (rules.ts)
+│  ├─ tracks/                track files (<id>.json) and the track registry
+│  ├─ biomes/                one BiomeDef per world (foundry, dwarven, victorian, orc, elven) + common set-piece helpers
+│  ├─ world/                 biome contract, world builder (build.ts), shared kit (rain, sight-line limit)
+│  ├─ sim/                   RaceSim (physics + rules, no rendering) shared by game and headless runner
+│  ├─ cup/                   Grand Prix: rounds, prizes, standings, workshop, AI growth, save
+│  ├─ flow/                  front-end flow: title → setup → briefing → race → results → standings → workshop
 │  ├─ race/                  race state machine, laps, positions
 │  ├─ rules/                 tabletop rules layer: gears, boiler, ramming, weapons, cards (gameplay.md)
 │  ├─ editor/                block-based level editor (after M3, §7.3)
@@ -342,6 +350,28 @@ The tabletop rules (gameplay.md §4–7, "simple gameplay" scope) live in `src/r
 
 All values are **placeholders** until the owner confirms them (§19, A7); the headless runner prints per-racer start outcome, damage taken by source, boiler outcomes, shots and hit zones, rams, final PF and wrecks to tune them.
 
+### 7.6 Biome system (implemented in M4)
+
+A track file names its biome (`biome` field); `src/biomes/index.ts` maps the id to a `BiomeDef` (`src/world/biome.ts`). `world/build.ts` builds the world from the compiled track and the biome:
+
+| `BiomeDef` field | Use |
+|---|---|
+| `tunables` | Palette, light, fog, post and wind preset. Before a biome applies it, every world key (`fog.*`, `light.*`, `post.*`, grade, wind) is reset to its default, so a race never inherits the previous world's look |
+| `surfaces`, `ground` | Texture, scale and tint per road surface and for the off-road ground |
+| `themes`, `theme` | Dressing mix per barricade type; `theme` is the fallback for types the biome does not list (the foundry kit never leaks into other worlds) |
+| `props(kit)` | The biome's own dressing props (`PropDef`, with `height` for tall ones), mixed in by `Theme.own` weights |
+| `debris`, `skirt`, `pit`, `gantry` | Ground debris colour/scale, sides of raised roads and jump pits, pit floor (lava or dark), start gantry banner |
+| `rain` | GPU rain streaks around the camera (`RainField`, medium tier and up) |
+| `clearView` | Cap tall dressing props to the board camera's sight line (see below) |
+| `decorate(ctx)` | Hand-placed set pieces by zone (`zone` on track pieces), built with `src/biomes/common.ts` (instanced batching, placement along the track, crowds, glow pools) |
+| `landmark(ctx, lm)` | The landmark named on a track piece (`landmark` with side, offset, rotation) |
+
+`WorldContext.animate(fn)` registers per-frame animations (gears, airships, cranes, banners), updated by the world's `update`.
+
+**The camera never loses the road** (`kit.viewHeightLimit`): the board camera has a fixed azimuth (35°) and pitch (47°), so a tall object between the camera and the road hides it. For a point beside the road, the limit is unlimited when the point is behind the road (seen from the camera) and `gap · tan(pitch) / max(0.35, −along)` on the camera side. Set pieces and tall props are cut to it (pillar stumps, low terraces, young trees), and the crane hazard tower is placed on the far side of the road.
+
+**Track rules as code** (`src/track/rules.ts`): `checkTrack(track)` reports length, longest straight, hairpins, surfaces, barricade types, hazards, landmarks, elevation and crates against doc 04 §4 (`CUP_RULES`); `tests/unit/cup-tracks.test.ts` keeps the four Cup tracks inside them.
+
 ## 8. AI
 
 - **Follow a racing line** with look-ahead proportional to speed (pure pursuit), target speed from upcoming curvature.
@@ -481,6 +511,8 @@ iOS Safari tabs are killed above ~1–1.5 GB total; budget conservatively.
 | `Race.Finished` | Player finished; AI continue for a few seconds, then results |
 | `Results` | Times, positions, retry / next |
 
+**Implemented in M4** (`src/flow/flow.ts`, `src/ui/Menus.tsx`): title → mode (Grand Prix / single race) → players → difficulty → vehicle → (track) → briefing → race → results (prizes) → standings → workshop → next briefing … → trophy. The Cup state (`src/cup/cup.ts`) is saved in `localStorage` (`steamRacers.cup.v1`) after every step, so the title offers *Continue Cup*. `?test&menu=1` keeps the menus in automated tests.
+
 ---
 
 ## 15. Debug tooling
@@ -553,7 +585,7 @@ Realme RMX3370 (Snapdragon 870, Android 13, Chrome 157, WebGPU), Medium tier, 4 
 | **M1 — Look test** | `InkLit`, hatching (procedural TAM), outlines, bloom, LUT, fog, steam particles, one foundry track section, 2 placeholder vehicles (static/animated), camera | Doc 02 §16 acceptance criteria |
 | **M2 — Driving prototype** | Rapier, gear-based vehicle model, steam push, input (kbd/gamepad/touch), camera follow, block-format test track, progress, laps, headless runner | Fun to drive 3 laps alone on desktop and phone |
 | **M3 — Race vertical slice** | 4 racers (configurable up to 8) with AI, start test, boiler basics, hull/collisions, front cannon, race states, HUD, minimap, identity banners/runes, results, 2-player split screen on PC | Complete 3-lap race vs 3 AI at target FPS on both device classes |
-| **M4 — Grand Prix** | Cup of 4 races (Dwarven, Victorian, Orc, Elven worlds), biome system, track format v2 with ramps and jumps, pickups, signature hazards, front-end, season loop, workshop, difficulty — [doc 04](04-grand-prix.md) | Full Cup from title to trophy on PC (1–2 players) and phone at target FPS |
+| **M4 — Grand Prix** (phases A–C done, D1/D2 pending) | Cup of 4 races (Dwarven, Victorian, Orc, Elven worlds), biome system, track format v2 with ramps and jumps, pickups, signature hazards, front-end, season loop, workshop, difficulty — [doc 04](04-grand-prix.md) | Full Cup from title to trophy on PC (1–2 players) and phone at target FPS |
 
 After M4: garage/upgrades, modules, full arsenal, cards and race events, driving school, level editor (§7.3), more biomes, audio and menu polish.
 

@@ -70,7 +70,7 @@ Each world step contains: track layout (block chain), biome definition, surface/
 |---|---|---|
 | D1 | **Balancing** | Headless runner: `--track` on all four, new `--season` mode (4 races, workshop AI, standings), lap time targets (§4), no stuck/repositions, hazard hit rates. |
 | D2 | **Performance** | Per-world budget for lights, particles and instanced props; phone test on each track; quality tiers (rain and crowds drop first). |
-| D3 | **Docs** | Update doc 03 (milestones, biome system, track format v2), doc 02 (palettes §12 per world), README, testing checklist. |
+| D3 | **Docs** ✅ | Update doc 03 (milestones, biome system, track format v2), doc 02 (palettes §12 per world), README, testing checklist. Done 2026-11-14: doc 03 §3, §7.6, §14, §18; doc 02 §12.1. |
 
 Suggested order: A1 → A2 → A5 (elevation changes physics and the format, so it lands before new tracks are authored) → C1 (first new world proves the biome system) → A3/A4 → B1–B4 → C2–C4 → D. One world can be built while the Cup flow is in progress.
 

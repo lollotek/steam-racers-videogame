@@ -1,6 +1,6 @@
 # 02 — Shader & Style Specification
 
-> Status: **v0.3** — S1–S4 decided; S5–S6 open. M1 implementation notes and calibrated values in §18.
+> Status: **v0.4** (2026-11-14) — S1–S4 decided; S5–S6 open. M1 implementation notes and calibrated values in §18; Cup world palettes in §12.1.
 > Depends on: [01 — Engine & Visual Direction](01-engine-visual-direction.md) (D1 ink-comic style, D2 rotating 3/4 camera, D3 WebGPU + TSL, D4 mid-range 2021 mobile, D6 steam foundry biome).
 > Purpose: define *exactly* how a frame is built so shaders, art and tooling can be developed in parallel.
 > All numeric values are **starting values** to be tuned in the look-test prototype. Pixel sizes refer to a **1080p reference** and scale with render height.
@@ -338,6 +338,19 @@ Derived from engine refs 1 and 4.
 Key light: color `#C9B8A6`, intensity 1.2, pitch 55°, from the camera's back-left. Hemisphere: sky `#4A4440`, ground `#2A1E1A`, intensity 0.5.
 
 ---
+
+### 12.1 Cup world palettes (M4)
+
+The token palettes of the four Cup worlds are in [doc 04 §7](04-grand-prix.md); the values below are the light and atmosphere presets actually shipped in each biome (`src/biomes/<id>.ts`, `tunables`). Racer identity colours (§13.1) stay out of every world accent.
+
+| World | Fog (colour, density, start) | Key light (colour, intensity, pitch) | Hemisphere sky / ground, ambient | Post | Road |
+|---|---|---|---|---|---|
+| Dwarven — *Runegate Deep* | `#141A22`, 0.009, 55 m | `#8FA6C8`, 4.0, 74° (cold, from above) | `#33404E` / `#1E1612`, 3.4 | exposure 1.45, bloom 0.8, gain `#EEF2FF` | light flagstone `#D4D0CA` on dirt ground `#5A5650`; braziers `#FF8A3A`, seal runes `#3FC8FF`, engine core `#FF3F6E` |
+| Victorian — *Cinderholme* | `#4A443E`, 0.011, 42 m | `#B8A898`, 3.4, 42° (overcast dusk) | `#6A625A` / `#2A2420`, 2.7 | bloom 0.7, gain `#FFEAD0` | wet cobble; gas light `#FFC46A`, brick `#7A3E2E`, verdigris `#5E8A7A`; no runes |
+| Orc — *Rustmaw Pit* | `#A08C70`, 0.0085, 55 m | `#FFD6A8`, 4.8, 26° (low hot sun) | `#B4A890` / `#4A3A2A`, 2.4 | bloom 0.65, gain `#FFF2E4` | sand `#E8DCC4`, scrap plates `#B8ACA0`, ground `#A88C68`; neon toxic `#6CFF3A` and blood `#FF2A2A` |
+| Elven — *Lirael Canopy* | `#4A5A60`, 0.012, 40 m | `#A8BCC4`, 3.0, 62° (cold rain) | `#7A8C94` / `#24302C`, 2.9 | bloom 1.0 (threshold 0.9), gain `#E8F8F4` | heartwood and moss; rune cyan `#3FF0E0`, green `#5AFF8A`, window amber `#FFB86A` |
+
+Rules learned while building them: the road must stay a mid value that reads against the ground (the first dwarven road blended into the rock floor); one hue must not dominate the whole frame (the first orc preset was orange everywhere, now neutral sand and grey scrap with warm light); emissive accents (runes, neon, gas light) carry the world identity, not the road or the ground.
 
 ## 13. Readability rules
 
