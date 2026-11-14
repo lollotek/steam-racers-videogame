@@ -25,7 +25,8 @@ function savePresets(p: Record<string, Preset>): void {
   }
 }
 
-export async function mountDebugPanel(game: Game, isTouch: boolean): Promise<void> {
+/** `game()` is the race running now (null on the menus): the panel outlives races (doc 04 B1). */
+export async function mountDebugPanel(game: () => Game | null, renderer: Game['gfx']['renderer'], isTouch: boolean): Promise<void> {
   const container = document.createElement('div');
   container.id = 'debug-panel';
   document.body.appendChild(container);
@@ -41,13 +42,15 @@ export async function mountDebugPanel(game: Game, isTouch: boolean): Promise<voi
   mf.addBinding(mon, 'frameMs', { readonly: true, label: 'avg ms', format: (v: number) => v.toFixed(1) });
   mf.addBinding(mon, 'simSteps', { readonly: true, label: 'sim steps', format: (v: number) => v.toFixed(0) });
   mf.addBinding(mon, 'p1', { readonly: true, label: 'P1 input' });
-  if (game.slots.length > 1) mf.addBinding(mon, 'p2', { readonly: true, label: 'P2 input' });
+  mf.addBinding(mon, 'p2', { readonly: true, label: 'P2 input' });
   setInterval(() => {
-    const s = game.snapshot();
+    const g = game();
+    if (!g) return;
+    const s = g.snapshot();
     mon.backend = s.backend;
     mon.tier = s.tier;
     mon.scale = s.renderScale;
-    mon.frameMs = game.dynres.averageMs;
+    mon.frameMs = g.dynres.averageMs;
     mon.simSteps = s.simSteps;
     mon.p1 = s.players[0]?.input ?? '';
     mon.p2 = s.players[1]?.input ?? '';
@@ -141,7 +144,7 @@ export async function mountDebugPanel(game: Game, isTouch: boolean): Promise<voi
   // --- Stats ------------------------------------------------------------------
   try {
     const stats = new Stats({ trackGPU: false, horizontal: true, minimal: isTouch });
-    await stats.init(game.gfx.renderer);
+    await stats.init(renderer);
     const holder = document.createElement('div');
     holder.id = 'debug-stats';
     stats.dom.style.position = 'static'; // stats-gl defaults to fixed top-left (over the HUD)

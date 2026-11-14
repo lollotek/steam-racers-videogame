@@ -4,6 +4,8 @@
  * M2: Rapier vehicles on the compiled block track, laps, countdown, results, autopilot rivals.
  * M3: race rules (start test, boiler, hull, ramming, front cannon), AI drivers, centre prompts,
  *     banners, minimap, retired racers in the results.
+ * M4: one Game = one race, built from a RaceSetup (track, entrants, grid, tunes) by the front-end
+ *     flow (src/flow); `dispose()` frees it before the next race (doc 04 B1/B2).
  */
 import { Quaternion, Vector3, type Scene } from 'three/webgpu';
 import { FixedStepLoop } from '../core/loop';
@@ -39,20 +41,20 @@ import { hullCondition } from '../rules/hull';
 import { coneHalfAngle, isLocked } from '../rules/cannon';
 import { PlayerGauges, type GaugeFrame } from '../ui/gauges';
 import { Minimap } from '../ui/minimap';
-import type { Banner } from '../ui/state';
+import type { Banner, ResultRow } from '../ui/state';
 import type { ViewportRect } from '../ui/vehicle-tag';
 import { compileTrack } from '../track/compile';
 import { LOOSE_SURFACES, type TrackFile } from '../track/track-format';
 import { getTrack } from '../tracks';
+import { IDENTITY_COLORS, RIVAL_NAMES, aiVehicle, playerName, type RaceOutcome, type VehicleId, type VehicleTune } from '../cup/cup';
+import { disposeScene } from '../world/kit';
 import { ui } from '../ui/state';
 import { VehicleTag } from '../ui/vehicle-tag';
 import type { SteamReadout } from '../ui/steam-pips';
 import { canPush, type GearboxState } from '../vehicles/gearbox';
 import { boilerCal } from '../rules/boiler';
 
-/** Placeholder identity colors until S5 is decided (doc 02 §13.1). */
-export const IDENTITY_COLORS = ['#E8E2D0', '#D94848', '#3F7FE0', '#E0C040', '#4FBF6A', '#B060D0', '#40C8C0', '#E07A9A'];
-const RIVAL_NAMES = ['Player One', 'Rosso', 'Blu', 'Giallo', 'Verde', 'Viola', 'Ciano', 'Rosa'];
+export { IDENTITY_COLORS };
 
 tunables.registerGroup('hud', [
   { key: 'hud.vehicleTag', type: 'boolean', default: true, label: 'Gear + steam under vehicle' },
@@ -110,11 +112,53 @@ interface RacerView {
   scrapeAcc: number;
 }
 
+/** One racer of a race. Humans come first (racer index = player slot). */
+export interface Entrant {
+  name: string;
+  color: string;
+  vehicle: VehicleId;
+  /** Workshop / difficulty multipliers. */
+  tune?: VehicleTune;
+  /** AI skill (null = the `ai.skill` tunable) and catch-up factor (doc 04 B4). */
+  skill?: number | null;
+  catchUp?: number;
+}
+
+/** Everything a race needs; built by the flow (src/flow) or from the URL flags (`quick`). */
+export interface RaceSetup {
+  /** quick = straight from the URL flags (tests, dev); single = menu single race; cup = Grand Prix race. */
+  mode: 'quick' | 'single' | 'cup';
+  track: TrackFile;
+  players: 1 | 2;
+  entrants: Entrant[];
+  /** Grid slot per racer (0 = pole); default: racer index. */
+  grid?: number[];
+  seed: number;
+  /** Adds prize / repair columns to the results rows (Cup). */
+  decorate?: (rows: ResultRow[]) => ResultRow[];
+}
+
 export interface GameOptions {
   flags: Flags;
   isMobile: boolean;
   tier: QualityTierName;
   touch: TouchSource;
+  race: RaceSetup;
+  /** Procedural texture set shared across races (built once, doc 03 §10.1). */
+  tex?: ProceduralSet;
+}
+
+/** The M3 boot: track, racers, players and laps from the URL flags, identity grid. */
+export function quickSetup(flags: Flags, isMobile: boolean): RaceSetup {
+  const players: 1 | 2 = isMobile ? 1 : flags.players;
+  const file = getTrack(flags.track);
+  const count = Math.max(players, Math.min(8, flags.racers));
+  const entrants: Entrant[] = Array.from({ length: count }, (_, i) => ({
+    name: i < players ? playerName(i, players) : RIVAL_NAMES[i]!,
+    color: IDENTITY_COLORS[i] ?? '#ffffff',
+    vehicle: i === 1 && players === 2 ? 'tank' : aiVehicle(i),
+  }));
+  return { mode: 'quick', track: flags.laps ? { ...file, laps: flags.laps } : file, players, entrants, seed: flags.seed };
 }
 
 export class Game {
@@ -147,12 +191,17 @@ export class Game {
   private minimap: Minimap | null = null;
   private features!: FeatureViews;
   private tmp2 = new Vector3();
+  private unsubscribe: (() => void)[] = [];
+  /** Players who gave up from the pause menu (results show them retired, no repair). */
+  private retired = new Set<number>();
+  readonly setup: RaceSetup;
 
   constructor(
     readonly gfx: RendererHandle,
     readonly opts: GameOptions,
   ) {
     const { flags, isMobile } = opts;
+    this.setup = opts.race;
     this.rng = new RngStreams(flags.seed);
 
     tunables.registerGroup('quality', [
@@ -166,21 +215,21 @@ export class Game {
     tunables.registerGroup('sim', [{ key: 'sim.timeScale', type: 'number', default: 1, min: 0, max: 4, step: 0.05, label: 'Time scale' }]);
 
     this.dynres = new DynamicResolution(TIERS[opts.tier], tunables.get('quality.targetFps'));
-    tunables.onChange((key, value) => {
+    const off = tunables.onChange((key, value) => {
       if (key === 'quality.tier') this.setTier(value as QualityTierName);
       if (key === 'quality.targetFps') this.dynres.targetFps = value as number;
       if (key === 'quality.dynamicResolution') this.dynres.enabled = value as boolean;
       if (key === 'sim.timeScale') this.loop.timeScale = value as number;
       if (key === 'ink.hatchEnabled') this.applyHatching();
     });
+    this.unsubscribe.push(off);
 
-    this.tex = makeProceduralSet(flags.seed);
+    this.tex = opts.tex ?? makeProceduralSet(flags.seed);
     SharedTex.tam = this.tex.tam;
     SharedTex.noise = this.tex.noise;
     SharedTex.paper = this.tex.paper;
 
-    const file = getTrack(flags.track);
-    this.trackFile = flags.laps ? { ...file, laps: flags.laps } : file;
+    this.trackFile = this.setup.track;
     this.world = buildWorld(getBiome(this.trackFile.biome), this.tex, flags.seed, compileTrack(this.trackFile));
     this.scene = this.world.scene;
     this.particles = new ParticleSystem(this.scene, this.tex.puff, flags.seed + 99);
@@ -188,7 +237,7 @@ export class Game {
     this.sparks = new SparkSystem(this.scene, flags.seed + 7);
 
     // Split screen is PC only (D5).
-    this.players = isMobile ? 1 : flags.players;
+    this.players = isMobile ? 1 : this.setup.players;
     ui.splitScreen.value = this.players === 2;
     for (let i = 0; i < this.players; i++) this.addSlot(i);
 
@@ -224,16 +273,20 @@ export class Game {
   /** (Re)build the race: physics world, vehicles and their visuals. Racers 0..players-1 are humans. */
   startRace(): void {
     this.sim?.dispose();
-    const count = Math.max(this.players, Math.min(8, this.opts.flags.racers));
-    const specs: VehicleSpec[] = Array.from({ length: count }, (_, i) => (i === 1 && this.players === 2 ? STEAM_TANK : i % 2 === 0 ? HOT_ROD : STEAM_TANK));
+    this.retired.clear();
+    const entrants = this.setup.entrants;
+    const specs: VehicleSpec[] = entrants.map((e) => (e.vehicle === 'tank' ? STEAM_TANK : HOT_ROD));
     this.sim = new RaceSim(
       this.trackFile,
-      specs.map((spec, i) => ({ spec, name: i < this.players ? (this.players === 2 ? `Player ${i + 1}` : 'Player One') : RIVAL_NAMES[i]! })),
-      this.opts.flags.seed + this.races++,
+      entrants.map((e, i) => ({ spec: specs[i]!, name: e.name, grid: this.setup.grid?.[i], tune: e.tune })),
+      this.setup.seed + this.races++,
     );
     this.buildViews(specs);
     if (this.features) this.features.sim = this.sim;
-    this.views.forEach((v, i) => (v.driver = i >= this.players ? createDriver(i, this.sim.rules.rng.int(0, 1e9), ((i % 3) - 1) * 1.6) : null));
+    this.views.forEach((v, i) => {
+      const e = entrants[i]!;
+      v.driver = i >= this.players ? createDriver(i, this.sim.rules.rng.int(0, 1e9), ((i % 3) - 1) * 1.6, { skill: e.skill, catchUp: e.catchUp }) : null;
+    });
     for (const s of this.slots) {
       s.camYaw = this.sim.racers[s.index]!.vehicle.heading();
       s.banners = [];
@@ -248,7 +301,7 @@ export class Game {
    * materials, and every new material is a shader compile, i.e. a frame hitch on the grid.
    */
   private buildViews(specs: VehicleSpec[]): void {
-    if (this.views.length === specs.length && this.views.every((v, i) => v.spec === specs[i])) return;
+    if (this.views.length === specs.length && this.views.every((v, i) => v.spec === specs[i] && v.color === this.colorOf(i))) return;
     for (const v of this.views) {
       this.scene.remove(v.rig.root);
       for (const e of v.exhaust) e.enabled = false;
@@ -257,7 +310,7 @@ export class Game {
     }
     this.views = [];
     specs.forEach((spec, i) => {
-      const color = IDENTITY_COLORS[i] ?? '#ffffff';
+      const color = this.colorOf(i);
       const rig = spec === HOT_ROD ? buildHotRod(this.tex, color) : buildSteamTank(this.tex, color);
       this.scene.add(rig.root);
       const exhaust = rig.stacks.map(() =>
@@ -306,8 +359,63 @@ export class Game {
     console.info(`[render] warm-up (shaders, shadows, post) in ${Math.round(performance.now() - t0)} ms`);
   }
 
+  private colorOf(i: number): string {
+    return this.setup.entrants[i]?.color ?? IDENTITY_COLORS[i] ?? '#ffffff';
+  }
+
   start(): void {
     this.gfx.renderer.setAnimationLoop(this.frame);
+  }
+
+  /**
+   * Free the race: loop, listeners, physics, scene resources, render pipelines, DOM overlays.
+   * The renderer, the canvas and the shared texture set stay for the next race.
+   */
+  dispose(): void {
+    this.gfx.renderer.setAnimationLoop(null);
+    window.removeEventListener('resize', this.onResize);
+    window.removeEventListener('keydown', this.onKey);
+    document.removeEventListener('visibilitychange', this.onVisibility);
+    for (const off of this.unsubscribe) off();
+    this.unsubscribe = [];
+    this.sim.dispose();
+    for (const s of this.slots) {
+      s.input.dispose();
+      s.tag.dispose();
+      s.gauges.dispose();
+    }
+    this.minimap?.dispose();
+    this.split?.dispose();
+    for (const p of this.pipelines) p.dispose();
+    this.world.keyLight.shadow.map?.dispose();
+    this.world.dispose();
+    disposeScene(this.scene, sharedTextures(this.tex));
+    ui.players.value = [];
+    ui.standings.value = [];
+    ui.results.value = null;
+    ui.paused.value = false;
+    ui.splitScreen.value = false;
+  }
+
+  /** Pause menu → Retire: every human still racing gives up (results right away). */
+  retire(): void {
+    for (const s of this.slots) {
+      const r = this.sim.racers[s.index]!;
+      if (r.finished) continue;
+      this.retired.add(s.index);
+      r.vehicle.wrecked = true;
+      r.rules.hull.wreckedAt ??= this.sim.clock - tunables.get<number>('hull.wreckToResults');
+    }
+    this.setPaused(false);
+  }
+
+  /** Race outcome per racer (Cup): order now (AI still racing keep their running position). */
+  outcomes(): RaceOutcome[] {
+    const order = this.sim.standings();
+    return this.sim.racers.map((r, i) => {
+      const retired = r.vehicle.wrecked && !r.finished;
+      return { position: order.indexOf(i) + 1, retired, wrecked: retired && !this.retired.has(i), bags: r.rules.money };
+    });
   }
 
   setPaused(paused: boolean): void {
@@ -361,9 +469,9 @@ export class Game {
     if (document.hidden) this.setPaused(true);
   };
 
-  /** Enter on the results screen restarts. */
+  /** Enter on the results screen restarts (quick mode; the menus handle it otherwise). */
   private onKey = (e: KeyboardEvent) => {
-    if (ui.results.value && (e.code === 'Enter' || e.code === 'NumpadEnter')) this.startRace();
+    if (this.setup.mode === 'quick' && ui.results.value && (e.code === 'Enter' || e.code === 'NumpadEnter')) this.startRace();
   };
 
   /** One fixed simulation step: inputs/autopilots → RaceSim. */
@@ -379,7 +487,7 @@ export class Game {
           this.setPaused(true);
           return;
         }
-        if (ui.results.value && (frame.pressed.steamPush || frame.pressed.reposition)) {
+        if (this.setup.mode === 'quick' && ui.results.value && (frame.pressed.steamPush || frame.pressed.reposition)) {
           // Steam push / reposition restarts from the results screen (pad and touch friendly).
           this.startRace();
           return;
@@ -426,9 +534,11 @@ export class Game {
 
   /** Results table; refreshed while shown, since the AI keep racing. */
   private showResults(): void {
-    ui.results.value = this.sim.standings().map((i) => {
+    const rows = this.sim.standings().map((i): ResultRow => {
       const r = this.sim.racers[i]!;
       return {
+        index: i,
+        bags: r.rules.money,
         name: r.name,
         color: this.views[i]!.color,
         time: r.progress.finishedAt,
@@ -438,6 +548,7 @@ export class Game {
         pf: r.rules.hull.pf,
       };
     });
+    ui.results.value = this.setup.decorate ? this.setup.decorate(rows) : rows;
   }
 
   /** Short message over a player's viewport (gameplay.md §9.2 outcome banners). */
@@ -889,6 +1000,16 @@ export class Game {
 /** Layer for per-frame, world-anchored UI: below every #ui overlay (results, pause, loading). */
 function worldUi(): HTMLElement {
   return document.getElementById('world-ui') ?? document.getElementById('ui') ?? document.body;
+}
+
+/** Textures of the shared procedural set (kept when a race's scene is disposed). */
+function sharedTextures(tex: ProceduralSet): Set<unknown> {
+  const keep = new Set<unknown>();
+  for (const v of Object.values(tex)) {
+    if (Array.isArray(v)) v.forEach((t) => keep.add(t));
+    else if (v && typeof v === 'object') keep.add(v);
+  }
+  return keep;
 }
 
 function shortAngle(a: number): number {

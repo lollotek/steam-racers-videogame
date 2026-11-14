@@ -14,6 +14,7 @@ describe('parseFlags', () => {
       test: false,
       laps: null,
       track: null,
+      quick: false,
       fullscreen: true,
     });
   });
@@ -25,5 +26,14 @@ describe('parseFlags', () => {
 
   it('ignores unknown tiers', () => {
     expect(parseFlags('?tier=potato').tier).toBeNull();
+  });
+});
+
+describe('quick boot', () => {
+  it('?test and ?quick skip the menus, ?test&menu=1 keeps them', () => {
+    expect(parseFlags('?test').quick).toBe(true);
+    expect(parseFlags('?quick').quick).toBe(true);
+    expect(parseFlags('?test&menu=1').quick).toBe(false);
+    expect(parseFlags('?track=proving-ground').quick).toBe(false);
   });
 });

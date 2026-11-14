@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:phone": "tsx tools/phone/run.ts",
+    "test:phone:cup": "tsx tools/phone/cup.ts",
     "test:all": "npm run typecheck && npm run test && npm run test:e2e"
   },
   "dependencies": {

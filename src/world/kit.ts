@@ -12,6 +12,9 @@ import {
   MeshBasicNodeMaterial,
   PlaneGeometry,
   SRGBColorSpace,
+  type InstancedMesh,
+  type Material,
+  type Object3D,
   type Texture,
 } from 'three/webgpu';
 import { float, mix, smoothstep, texture, time, uv, vec2, vec3, vec4 } from 'three/tsl';
@@ -219,4 +222,28 @@ export function skirtFromSamples(track: CompiledTrack, from: number, count: numb
   g.setIndex(idx);
   g.computeVertexNormals();
   return g;
+}
+
+/**
+ * Free the GPU resources of a scene (geometries, materials and their own textures) when a race
+ * ends (doc 04 B2: one scene per race). Textures in `keep` (the shared procedural set) survive.
+ */
+export function disposeScene(scene: Object3D, keep: Set<unknown>): void {
+  const mats = new Set<Material>();
+  const geos = new Set<BufferGeometry>();
+  scene.traverse((o) => {
+    const m = o as Mesh;
+    if (m.geometry) geos.add(m.geometry);
+    if (m.material) for (const mat of Array.isArray(m.material) ? m.material : [m.material]) mats.add(mat);
+    if ((o as InstancedMesh).isInstancedMesh) (o as InstancedMesh).dispose();
+  });
+  for (const g of geos) g.dispose();
+  for (const mat of mats) {
+    for (const v of Object.values(mat)) {
+      const t = v as Texture | null;
+      if (t && typeof t === 'object' && (t as { isTexture?: boolean }).isTexture && !keep.has(t)) t.dispose();
+    }
+    mat.dispose();
+  }
+  scene.clear();
 }

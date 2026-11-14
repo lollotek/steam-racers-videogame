@@ -15,6 +15,7 @@ import type { Barricade } from '../track/track-format';
 import { RaceRules, createRacerRules, type RacerRules, type RuleEvent } from './race-rules';
 import { type StatsId, vehicleStats } from '../rules/stats';
 import { TrackFeatures } from './track-features';
+import type { VehicleTune } from '../cup/cup';
 import { JUMP } from '../track/track-format';
 
 export const SIM_STEP = 1 / 60;
@@ -40,6 +41,10 @@ export interface RacerConfig {
   name: string;
   /** Tabletop characteristics (gameplay.md §3.1); default from the spec. */
   stats?: StatsId;
+  /** Grid slot (0 = pole); default: the racer index. */
+  grid?: number;
+  /** Workshop / difficulty driving multipliers (doc 04 B3/B4). */
+  tune?: VehicleTune;
 }
 
 export interface Racer {
@@ -130,10 +135,12 @@ export class RaceSim {
     this.clock = -tunables.get('race.countdown');
     this.buildStatic();
     racers.forEach((cfg, i) => {
-      const slot = this.track.spawn[i % this.track.spawn.length]!;
+      const gridSlot = cfg.grid ?? i;
+      const slot = this.track.spawn[gridSlot % this.track.spawn.length]!;
       const stats = vehicleStats(cfg.stats ?? (cfg.spec.half.x > 1.2 ? 'tank' : 'hotrod'));
-      const rules = createRacerRules(stats, i === 0);
+      const rules = createRacerRules(stats, gridSlot === 0);
       const vehicle = new PhysicsVehicle(RAPIER, this.world, cfg.spec, slot, rules.boiler);
+      if (cfg.tune) vehicle.tune = { ...cfg.tune };
       const edge: EdgeState = { contact: false, side: 1, barricade: file.defaultBarricade, time: 0, tick: 0, away: 99, slide: 0, x: 0, z: 0, nx: 0, nz: 0 };
       this.racers.push({ index: i, name: cfg.name, vehicle, progress: createProgress(this.track, slot.x, slot.z), outOfBounds: 0, edge, preVx: 0, preVz: 0, preVy: 0, rules, finished: false });
     });
@@ -340,7 +347,7 @@ export class RaceSim {
       // Scraping is always slower than the clean line: the engine target drops and drag pulls
       // the speed down to it.
       v.edgeSlow = prm.scrapeSpeed;
-      const cap = Math.abs(v.lastOutput?.targetRatio ?? 1) * tunables.get('handling.maxSpeed') * prm.scrapeSpeed;
+      const cap = Math.abs(v.lastOutput?.targetRatio ?? 1) * v.maxSpeed() * prm.scrapeSpeed;
       const over = Math.abs(vt) - cap;
       if (over > 0) vt -= Math.sign(vt) * Math.min(over, prm.scrapeDrag * dt);
       e.time += dt;

@@ -62,6 +62,7 @@ export class InkPipeline {
   private scenePass: N;
   private bloomNode: N = null;
   private dirty = true;
+  private offTunables: () => void;
 
   constructor(
     private renderer: WebGPURenderer,
@@ -79,12 +80,17 @@ export class InkPipeline {
     sceneMrt.setBlendMode('normal', new BlendMode(MaterialBlending));
     sceneMrt.setBlendMode('meta', new BlendMode(MaterialBlending));
     this.scenePass.setMRT(sceneMrt);
-    tunables.onChange((key) => {
+    this.offTunables = tunables.onChange((key) => {
       if (REBUILD_KEYS.has(key)) this.dirty = true;
       if (this.bloomNode && key === 'post.bloomStrength') this.bloomNode.strength.value = tunables.get('post.bloomStrength');
       if (this.bloomNode && key === 'post.bloomRadius') this.bloomNode.radius.value = tunables.get('post.bloomRadius');
       if (this.bloomNode && key === 'post.bloomThreshold') this.bloomNode.threshold.value = tunables.get('post.bloomThreshold');
     });
+  }
+
+  dispose(): void {
+    this.offTunables();
+    this.pipeline.dispose();
   }
 
   setCamera(camera: Camera): void {

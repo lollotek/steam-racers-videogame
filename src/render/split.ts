@@ -27,6 +27,11 @@ export class SplitCompositor {
     this.resize();
   }
 
+  dispose(): void {
+    for (const t of this.targets) t.dispose();
+    this.out.dispose();
+  }
+
   /** Call on resize / pixel-ratio change. */
   resize(): void {
     this.renderer.getDrawingBufferSize(this.size);

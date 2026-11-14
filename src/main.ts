@@ -3,9 +3,10 @@ import { parseFlags } from './core/flags';
 import { createRenderer } from './render/renderer';
 import { detectTier, isMobileDevice } from './render/quality';
 import { TouchSource } from './input/touch';
-import { Game } from './game/game';
+import type { Game } from './game/game';
+import { Flow } from './flow/flow';
 import { App } from './ui/App';
-import { ui } from './ui/state';
+import { flowUi, ui, type FlowActions } from './ui/state';
 import { tunables } from './core/tunables';
 import { initPhysics } from './sim/race-sim';
 import { installAutoFullscreen } from './ui/fullscreen';
@@ -25,8 +26,16 @@ async function boot(): Promise<void> {
 
   const touch = new TouchSource();
   const uiRoot = document.getElementById('ui')!;
-  let game: Game | null = null;
-  render(h(App, { touch, onResume: () => game?.setPaused(false), onRestart: () => game?.startRace() }), uiRoot);
+  let flow: Flow | null = null;
+  // Screens call the flow once it exists (it needs the renderer); until then they are inert.
+  const actions = new Proxy({} as FlowActions, {
+    get: (_t, k) => {
+      if (k === 'tracks') return flow?.tracks ?? [];
+      return (...args: unknown[]) => (flow as unknown as Record<string, (...a: unknown[]) => unknown> | null)?.[k as string]?.(...args);
+    },
+  });
+  if (!flags.quick) flowUi.screen.value = 'title';
+  render(h(App, { touch, actions }), uiRoot);
 
   await initPhysics();
   const gfx = await createRenderer(document.getElementById('viewport')!, flags.forceWebGL);
@@ -43,19 +52,32 @@ async function boot(): Promise<void> {
       screenPixels: screen.width * screen.height * (devicePixelRatio || 1) ** 2,
     });
 
-  game = new Game(gfx, { flags, isMobile, tier, touch });
-  await game.warmUp();
-  ui.loading.value = false;
-  game.start();
+  let game: Game | null = null;
+  let storage: Storage | null = null;
+  try {
+    storage = window.localStorage;
+  } catch {
+    /* private mode: the Cup is not saved */
+  }
+  flow = new Flow({ gfx, flags, isMobile, tier, touch, store: storage, onGame: (g) => (game = g) });
 
   if (import.meta.env.DEV || flags.test) {
-    (window as unknown as { __steamRacers: unknown }).__steamRacers = { game, tunables, snapshot: () => game!.snapshot() };
+    (window as unknown as { __steamRacers: unknown }).__steamRacers = {
+      get game() {
+        return game;
+      },
+      flow,
+      tunables,
+      snapshot: () => game?.snapshot() ?? null,
+    };
   }
 
   if (flags.debug) {
     const { mountDebugPanel } = await import('./debug/debug-panel');
-    await mountDebugPanel(game, ui.showTouch.value);
+    await mountDebugPanel(() => game, gfx.renderer, ui.showTouch.value);
   }
+
+  await flow.boot();
 }
 
 boot().catch((e: unknown) => {

@@ -12,6 +12,7 @@ export interface Snapshot {
   players: { gear: number; pushCooldown: number; pv: number; pf: number; ammo: number; wrecked: boolean; start: string | null; boilerTest: string | null; lap: number; distance: number; speed: number; heading: number; device: string; input: string }[];
 }
 
+/** Current race snapshot; null on the menus (no race running). */
 export async function snapshot(page: Page): Promise<Snapshot> {
   return page.evaluate(() => (window as unknown as { __steamRacers: { snapshot(): Snapshot } }).__steamRacers.snapshot());
 }
@@ -25,7 +26,8 @@ export async function boot(page: Page, query = ''): Promise<string[]> {
   });
   await page.goto(`/?test${query ? `&${query}` : ''}`);
   await expect.poll(() => page.evaluate(() => '__steamRacers' in window), { timeout: 90_000 }).toBe(true);
-  await expect.poll(async () => (await snapshot(page)).frames, { timeout: 90_000 }).toBeGreaterThan(30);
+  // The hook exists before the race does (?debug mounts the panel first): wait for a snapshot.
+  await expect.poll(async () => (await snapshot(page))?.frames ?? 0, { timeout: 90_000 }).toBeGreaterThan(30);
   // Gears are frozen during the countdown (doc 03 §14): wait for GO.
   await expect.poll(async () => (await snapshot(page)).phase, { timeout: 90_000 }).toBe('running');
   // M3: no pushes during the calm time after GO (plus a possible start stall, gameplay.md §4).

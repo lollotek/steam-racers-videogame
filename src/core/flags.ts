@@ -11,6 +11,8 @@
  *   ?track=id         track file from src/tracks (default foundry-01)
  *   ?test             expose test hooks on window
  *   ?fullscreen=0     phones: do not enter fullscreen on the first tap
+ *   ?quick            skip the menus: straight into a race from these flags (implied by ?test;
+ *                     ?test&menu=1 keeps the menus)
  */
 import type { QualityTierName } from '../render/quality';
 
@@ -26,6 +28,8 @@ export interface Flags {
   laps: number | null;
   track: string | null;
   fullscreen: boolean;
+  /** Boot straight into a race (no title / setup screens). */
+  quick: boolean;
 }
 
 const TIERS: readonly QualityTierName[] = ['low', 'medium', 'high', 'ultra'];
@@ -50,5 +54,6 @@ export function parseFlags(search: string): Flags {
     laps: p.has('laps') ? Math.min(9, Math.max(1, Math.floor(num('laps', 3)))) : null,
     track: p.get('track') && /^[a-z0-9-]+$/.test(p.get('track')!) ? p.get('track') : null,
     fullscreen: p.get('fullscreen') !== '0',
+    quick: (p.has('quick') && p.get('quick') !== '0') || (p.has('test') && p.get('menu') !== '1'),
   };
 }

@@ -8,7 +8,7 @@
 
 - Dev server reachable from the phone: `npm run dev` prints a LAN URL (`--host` is on). Phone and PC on the same network.
 - WebGPU needs a secure context: `localhost` is fine on PC; from the phone use the HTTPS preview build or a tunnel.
-- **Automated real-phone run (Android):** `npm run test:phone -- --adb D:\programmi\scrcpy-win64-v3.3.4\adb.exe --serial IP:PORT` drives Chrome on the phone over ADB (Playwright): WebGPU backend, boot/warm-up time, FPS during an autopilot lap at Medium, STEAM touch button, console errors, screenshots in `tools/phone/out/`. One-time setup: Developer options → Wireless debugging → Pair device with pairing code, then `adb pair IP:PAIR_PORT CODE`; the connect port is shown on the same screen. `adb reverse` serves the PC dev server as the phone's `localhost` (secure context: WebGPU without HTTPS). Feel, readability and real touch handling still need a human.
+- **Automated real-phone run (Android):** `npm run test:phone -- --adb D:\programmi\scrcpy-win64-v3.3.4\adb.exe --serial IP:PORT` drives Chrome on the phone over ADB (Playwright): WebGPU backend, boot/warm-up time, FPS during an autopilot lap at Medium, STEAM touch button, console errors, screenshots in `tools/phone/out/`. One-time setup: Developer options → Wireless debugging → Pair device with pairing code, then `adb pair IP:PAIR_PORT CODE`; the connect port is shown on the same screen. `adb reverse` serves the PC dev server as the phone's `localhost` (secure context: WebGPU without HTTPS). Feel, readability and real touch handling still need a human. `npm run test:phone:cup` does the same for the menus and the Cup flow (M4 phase B).
 - **Phone performance probe:** `npx tsx tools/phone/perf.ts --adb … --serial IP[:PORT]` measures FPS and CPU time per frame part with each effect switched off in turn (`--only a,b`, `--fullscreen` taps into fullscreen first, `--profile 5` records a CPU profile and prints the hottest functions). Results and findings: doc 03 §16.1. Let the phone cool down between runs (results drift when it is hot).
 - Phones enter fullscreen and lock landscape on the first tap (browsers allow it only after a gesture; the portrait hint says "tap to play fullscreen"); `?fullscreen=0` disables it. An installed PWA starts fullscreen.
 - Add `?debug` to open the tuning panel. Useful flags: `?tier=low`, `?backend=webgl2`, `?players=2`, `?touch=1`, `?seed=123`.
@@ -149,3 +149,42 @@ Goal (doc 04 §3 A): the foundations of the Cup work on a test track. Open `?tra
 ### Phone
 
 - [ ] Proving ground runs at ≥ 30 fps (Medium); crates, hazard glows and jump pits readable.
+
+## M4 phase B — Front-end, Cup, workshop, difficulty
+
+Goal (doc 04 §3 B, §10): a full Cup from the title to the trophy. Open the game with no flags (`?laps=1` for faster runs).
+
+### PC
+
+- [ ] Title shows Grand Prix and Single race; arrows/WASD move, Enter/Space pick, Esc goes back a step; a gamepad works the same (d-pad, A, B); the mouse highlights the item under it.
+- [ ] Grand Prix → 1 player → Normal → Hot Rod → briefing of *Runegate Deep* (world, hazard, grid draw, "stand-in layout" note).
+- [ ] Race → results show prize per position, money bags and repair for wrecks → Continue → Cup standings → Workshop.
+- [ ] Workshop: buying a level lowers the cash, fills a pip, the price grows; MAX after 4; buttons grey out when too expensive. Next race → briefing 2 with the grid in standings order (leader on pole).
+- [ ] The car with Top speed / Acceleration levels is visibly faster on the straights / out of corners.
+- [ ] Close the tab between races, reopen: Continue Cup resumes at the same point (workshop or briefing).
+- [ ] Pause in a Cup race: Resume, Retire (results: you are RETIRED, no prize, no repair), Quit to title (the race is not counted, Continue resumes at its briefing).
+- [ ] After race 4: standings → Trophy → Back to title; Continue Cup is gone.
+- [ ] 2 players: both choose a vehicle; the workshop has one turn per player; split screen races.
+- [ ] Easy vs Hard: rivals clearly slower / faster, Hard rivals upgrade more over the Cup.
+- [ ] Single race: track choice, random grid, Pause → Restart works, results → Race again / Title.
+
+### Phone
+
+Automated: `npm run test:phone:cup -- --adb … --serial IP:PORT` taps through the menus with real touch events (CDP), races Cup race 1 on autopilot, buys an upgrade, starts race 2 without a reload, quits from the touch pause menu and resumes the saved Cup after a reload. Prints FPS, load times, JS heap and layout checks (main button visible without scrolling, touch targets ≥ 40 px); screenshots `tools/phone/out/cup-*.png`.
+
+- [x] Menus are tappable and fit in landscape (no players step); the main button of every screen stays on screen. *(2026-11-14, see results below)*
+- [x] A Cup can be saved and resumed after a reload (quit mid-race → back at that race's briefing). *(2026-11-14; reload, not a PWA restart)*
+- [ ] Feel by hand: reading the briefing and workshop with a thumb, scrolling the standings, a full 4-race Cup in the installed PWA.
+
+**Results 2026-11-14** — Realme RMX3370 (Snapdragon 870, Chrome, WebGPU, Medium tier), dev server over `adb reverse`, Chrome tab with the URL bar (viewport 719 × 267 px, `?fullscreen=0`):
+
+| Check | Result |
+|---|---|
+| Quick race (`test:phone`) | ready in 12.9 s (shader warm-up 12.0 s), FPS min 49 / p10 50 / median 54, STEAM touch button shifts up, no console errors |
+| Title | interactive 1.3–1.5 s after load (the 3D race is built only when a race starts) |
+| Cup race 1 / race 2 | ready in 13.2–13.3 s / 10.7–11.0 s (second warm-up shorter: shader cache), FPS median 50–52 / 54, min 43–45 / 49–50 |
+| Memory between races | JS heap 72 MB before race 1, after it, on the menus, during race 2 and after quitting: no JS leak (GPU memory is not measurable from the page) |
+| Touch flow | Grand Prix → difficulty → vehicle → briefing → race → results → standings → workshop (Buy spent $20,000) → race 2 → pause (II) → quit → reload → Continue Cup ("Race 2 of 4") → briefing of race 2: all OK, no errors |
+| Players step | not shown on the phone (split screen is PC only) ✓ |
+| **Found and fixed** | at 267 px height the main button (Start race, Continue, Next race) was below the fold on briefing, results, standings and workshop; workshop Buy buttons were 33 px tall; the results table wrapped "best" and "PF" on two lines. Now: the action row is sticky at the bottom of the card, touch buttons are ≥ 44 px, best lap and PF columns are hidden on short screens. Re-run: no layout issues. |
+| Still open | ~11–13 s loading card before every Cup race on this phone (whole-world shader warm-up per race); worth a progress bar or a shared shader cache in phase D2 |

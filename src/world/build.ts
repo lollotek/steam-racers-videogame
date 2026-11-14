@@ -66,6 +66,8 @@ export interface GameWorld {
   /** Ground height under a point. */
   heightAt(x: number, z: number): number;
   update(dt: number, focus: Vector3): void;
+  /** Drop the tunables listeners (the scene itself is disposed by the owner). */
+  dispose(): void;
 }
 
 /** Road looks used when a biome does not override a surface. */
@@ -149,9 +151,12 @@ export function buildWorld(biome: BiomeDef, tex: ProceduralSet, seed: number, tr
   const scene = new Scene();
   scene.background = new Color(tunables.get<string>('fog.color'));
   (scene as N).fogNode = heightFogNode();
-  tunables.onChange((k, v) => {
-    if (k === 'fog.color') (scene.background as Color).set(v as string);
-  });
+  const offs: (() => void)[] = [];
+  offs.push(
+    tunables.onChange((k, v) => {
+      if (k === 'fog.color') (scene.background as Color).set(v as string);
+    }),
+  );
 
   // --- Lights -------------------------------------------------------------------
   const hemi = new HemisphereLight(tunables.get<string>('light.skyColor'), tunables.get<string>('light.groundColor'), tunables.get('light.ambient'));
@@ -178,7 +183,7 @@ export function buildWorld(biome: BiomeDef, tex: ProceduralSet, seed: number, tr
       l.distance = tunables.get('light.furnaceRange');
     }
   };
-  tunables.onChange((k) => k.startsWith('light.') && syncLights());
+  offs.push(tunables.onChange((k) => k.startsWith('light.') && syncLights()));
 
   // --- Ground ---------------------------------------------------------------------
   const elevated = track.bounds.minY !== 0 || track.bounds.maxY !== 0 || track.samples.some((s) => s.feature !== 'road');
@@ -383,6 +388,9 @@ export function buildWorld(biome: BiomeDef, tex: ProceduralSet, seed: number, tr
     emitters,
     localLights,
     heightAt,
+    dispose() {
+      for (const off of offs) off();
+    },
     update(_dt, focus) {
       // Shadow camera follows the view focus (doc 02 §3.3: single shadow map fitted to the camera).
       const pitch = (tunables.get('light.keyPitch') * Math.PI) / 180;

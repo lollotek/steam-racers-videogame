@@ -1026,3 +1026,324 @@ body.touch-ui .badge {
   font-size: 15px;
   font-variant-numeric: tabular-nums;
 }
+
+/* ---------------------------------------------------------------------------------------------
+ * Front-end screens (doc 04 B1–B3): title, setup, briefing, standings, workshop, trophy.
+ * Opaque painted backdrop (no 3D scene behind the menus), ink + brass like the HUD panels.
+ * ------------------------------------------------------------------------------------------- */
+.screen {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow-y: auto;
+  padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  pointer-events: auto;
+  touch-action: pan-y;
+  background:
+    radial-gradient(ellipse at 50% 120%, rgba(255, 138, 42, 0.35), transparent 60%),
+    repeating-linear-gradient(135deg, rgba(176, 138, 74, 0.05) 0 2px, transparent 2px 14px),
+    linear-gradient(#2b1f22, #1b1210);
+}
+.menu-card {
+  width: min(460px, 100%);
+  padding: 18px 24px 14px;
+  background: rgba(43, 31, 34, 0.92);
+  border: 3px solid var(--brass);
+  border-radius: 10px;
+  box-shadow: 0 0 0 3px var(--ink), 0 12px 40px rgba(0, 0, 0, 0.6);
+  text-align: center;
+}
+.menu-card.wide {
+  width: min(820px, 100%);
+}
+.menu-card h1 {
+  margin: 4px 0 6px;
+  color: var(--fire-core);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  font-size: 26px;
+}
+.menu-card h2 {
+  margin: 6px 0 10px;
+  color: var(--steam);
+  font-size: 15px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+}
+.menu-card p {
+  margin: 6px 0;
+  line-height: 1.35;
+}
+.logo {
+  display: flex;
+  flex-direction: column;
+  line-height: 0.9;
+  margin: 2px 0 10px;
+  font-weight: 900;
+  font-style: italic;
+  letter-spacing: 6px;
+  -webkit-text-stroke: 2px var(--ink);
+}
+.logo-top {
+  font-size: 44px;
+  color: var(--brass);
+}
+.logo-bottom {
+  font-size: 54px;
+  color: var(--fire);
+  text-shadow: 0 0 18px rgba(255, 138, 42, 0.5);
+}
+.menu-crumb {
+  color: var(--brass);
+  font-size: 12px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+.menu-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0 10px;
+}
+.menu-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 10px 14px;
+  font: inherit;
+  color: var(--steam);
+  text-align: left;
+  background: rgba(27, 18, 16, 0.75);
+  border: 2px solid var(--iron);
+  border-radius: 6px;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.menu-item:focus,
+.menu-item:hover {
+  outline: none;
+  border-color: var(--fire-core);
+  background: rgba(122, 74, 46, 0.55);
+}
+.menu-item:focus .menu-label {
+  color: var(--fire-core);
+}
+.menu-label {
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+.menu-hint {
+  font-size: 12px;
+  opacity: 0.75;
+}
+.menu-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin: 10px 0 4px;
+}
+.menu-help {
+  font-size: 11px;
+}
+.btn:focus,
+.btn:hover {
+  outline: 3px solid var(--fire-core);
+  outline-offset: 2px;
+}
+.btn.ghost {
+  color: var(--steam);
+  background: rgba(27, 18, 16, 0.7);
+  border-color: var(--iron);
+}
+.btn.small {
+  padding: 6px 12px;
+  font-size: 13px;
+  letter-spacing: 1px;
+}
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+  outline: none;
+}
+.briefing .world {
+  color: var(--brass);
+}
+.briefing .hazard {
+  padding: 6px 10px;
+  border-left: 4px solid var(--fire);
+  background: rgba(27, 18, 16, 0.6);
+  text-align: left;
+}
+.briefing .hazard b {
+  color: var(--fire);
+  margin-right: 6px;
+  text-transform: uppercase;
+}
+.grid-list {
+  margin: 10px 0;
+  font-size: 13px;
+}
+.grid-list ol {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 14px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style-position: inside;
+}
+.grid-list li.me,
+.podium li.me,
+.standings-table tr.me td {
+  color: var(--fire-core);
+  font-weight: 800;
+}
+.standings-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.standings-table th {
+  font-size: 11px;
+  color: var(--brass);
+  font-weight: 600;
+  padding: 2px 6px;
+}
+.standings-table td {
+  padding: 4px 6px;
+  border-top: 1px solid rgba(90, 81, 75, 0.5);
+  white-space: nowrap;
+}
+.standings-table td:nth-child(2) {
+  text-align: left;
+}
+.cash b {
+  color: var(--fire-core);
+  font-size: 18px;
+}
+.upgrades {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px;
+  margin: 10px 0;
+}
+.upgrade {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  text-align: left;
+  background: rgba(27, 18, 16, 0.7);
+  border: 2px solid var(--iron);
+  border-radius: 6px;
+}
+.upgrade-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.pips {
+  display: flex;
+  gap: 3px;
+}
+.pips i {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--brass);
+  border-radius: 2px;
+}
+.pips i.on {
+  background: var(--fire);
+}
+.trophy .cup-icon {
+  font-size: 64px;
+  line-height: 1;
+  margin: 4px 0;
+  filter: sepia(0.6) drop-shadow(0 0 16px rgba(255, 210, 122, 0.6));
+}
+.podium {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  margin: 8px auto 12px;
+}
+.results .money-cell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.results .money-cell.bad {
+  color: #e0644a;
+}
+@media (max-height: 480px) {
+  .menu-card {
+    padding: 10px 14px 8px;
+  }
+  .logo-top {
+    font-size: 26px;
+  }
+  .logo-bottom {
+    font-size: 32px;
+  }
+  .menu-list {
+    gap: 5px;
+  }
+  .menu-item {
+    padding: 6px 10px;
+  }
+  .menu-card h1 {
+    font-size: 20px;
+  }
+  .standings-table {
+    font-size: 12px;
+  }
+}
+
+/* Cup results carry three money columns: scroll sideways on narrow screens instead of overflowing. */
+.panel.results {
+  max-width: 96vw;
+  max-height: 94vh;
+  overflow: auto;
+}
+
+/* Phone check (2026-11-14, RMX3370 landscape with the browser bar: 719 × 267 px): the main action
+ * must stay on screen while the card scrolls, and touch targets need ≥ 44 px. */
+.menu-row.actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin-bottom: -6px;
+  padding: 8px 0 6px;
+  background: linear-gradient(transparent, rgba(43, 31, 34, 0.96) 30%);
+}
+body.touch-ui .btn,
+body.touch-ui .menu-item {
+  min-height: 44px;
+}
+@media (max-height: 480px) {
+  .results td.opt {
+    display: none;
+  }
+  .results td {
+    padding: 3px 8px;
+    white-space: nowrap;
+  }
+  .panel.results h1,
+  .panel.pause h1 {
+    font-size: 22px;
+  }
+  .menu-card .menu-crumb {
+    font-size: 10px;
+  }
+  .briefing p {
+    margin: 3px 0;
+    font-size: 13px;
+  }
+}

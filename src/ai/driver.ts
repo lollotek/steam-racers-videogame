@@ -19,6 +19,7 @@ tunables.registerGroup('ai', [
   { key: 'ai.avoidGap', type: 'number', default: 3.2, min: 0.5, max: 8, step: 0.1, unit: 'm', label: 'Avoidance: lateral gap' },
   { key: 'ai.ventPressure', type: 'number', default: 0.6, min: 0, max: 1, step: 0.05, label: 'Vents voluntarily above pressure' },
   { key: 'ai.hazardLook', type: 'number', default: 80, min: 0, max: 200, step: 5, unit: 'm', label: 'Hazards: look ahead' },
+  { key: 'ai.catchUpGap', type: 'number', default: 60, min: 0, max: 400, step: 5, unit: 'm', label: 'Catch-up: gap to the car ahead' },
   { key: 'ai.pickupReach', type: 'number', default: 4, min: 0, max: 14, step: 0.5, unit: 'm', label: 'Crates: max detour from the line' },
 ]);
 
@@ -34,11 +35,37 @@ export interface DriverState {
   /** Hazard cycle keys (id × 1000 + cycle) this driver decided to respect / ignore. */
   heeded: number;
   ignored: number;
+  /** Own skill (difficulty, doc 04 B4); null = the `ai.skill` tunable. */
+  skill: number | null;
+  /** Top speed factor at the back of the pack (doc 04 B4); 1 = no catch-up. */
+  catchUp: number;
 }
 
-export function createDriver(index: number, seed: number, baseOffset: number): DriverState {
+export interface DriverOptions {
+  skill?: number | null;
+  catchUp?: number;
+}
+
+export function createDriver(index: number, seed: number, baseOffset: number, o: DriverOptions = {}): DriverState {
   const rng = new Rng(hashString(`${seed}:ai:${index}`));
-  return { index, ap: createAutopilot(baseOffset), baseOffset, rng, startAim: 0, ventAt: null, heeded: -1, ignored: -1 };
+  return { index, ap: createAutopilot(baseOffset), baseOffset, rng, startAim: 0, ventAt: null, heeded: -1, ignored: -1, skill: o.skill ?? null, catchUp: o.catchUp ?? 1 };
+}
+
+const skillOf = (d: DriverState) => d.skill ?? tunables.get<number>('ai.skill');
+
+/**
+ * Light catch-up (doc 04 B4): only an AI in the back half of the order, more than
+ * `ai.catchUpGap` metres behind the car ahead of it, gets a small top speed factor.
+ */
+function catchUpFor(d: DriverState, sim: RaceSim): number {
+  if (d.catchUp <= 1 || sim.phase !== 'running') return 1;
+  const order = sim.standings();
+  const pos = order.indexOf(d.index);
+  if (pos < Math.ceil(order.length / 2) || pos <= 0) return 1;
+  const me = sim.racers[d.index]!.progress.distance;
+  const ahead = sim.racers[order[pos - 1]!]!;
+  if (ahead.vehicle.wrecked && !ahead.finished) return 1;
+  return ahead.progress.distance - me > tunables.get<number>('ai.catchUpGap') ? d.catchUp : 1;
 }
 
 const IDLE = emptyFrame();
@@ -46,8 +73,9 @@ const IDLE = emptyFrame();
 export function driveRacer(d: DriverState, sim: RaceSim): ActionFrame {
   const r = sim.racers[d.index]!;
   if (r.vehicle.wrecked) return IDLE;
-  const skill = tunables.get<number>('ai.skill');
-  const maxSpeed = tunables.get<number>('handling.maxSpeed');
+  const skill = skillOf(d);
+  r.vehicle.catchUp = catchUpFor(d, sim);
+  const maxSpeed = r.vehicle.maxSpeed();
   const g = r.vehicle.gearbox;
 
   if (sim.phase === 'countdown') {
@@ -92,7 +120,7 @@ function featureGoal(d: DriverState, sim: RaceSim, base: number): number {
   const track = sim.track;
   const lim = track.halfWidth - 2.5;
   const speed = Math.max(6, Math.abs(me.vehicle.telemetry.forwardSpeed));
-  const skill = tunables.get<number>('ai.skill');
+  const skill = skillOf(d);
   let goal = base;
   for (const h of track.hazards) {
     const dist = distanceTo(h, me.progress.s, track.length);

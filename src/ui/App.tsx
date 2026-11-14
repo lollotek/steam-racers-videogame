@@ -1,16 +1,36 @@
-import { ui, formatTime, type PlayerHud } from './state';
+import { flowUi, ui, formatTime, type FlowActions, type PlayerHud } from './state';
+import { BriefingScreen, PauseMenu, ResultsPanel, StandingsScreen, TitleScreen, TrophyScreen, WorkshopScreen } from './Menus';
 import { TouchControls } from './TouchControls';
-import { Controls } from './Controls';
 import { enterFullscreen } from './fullscreen';
 import type { TouchSource } from '../input/touch';
 
 interface Props {
   touch: TouchSource;
-  onResume: () => void;
-  onRestart: () => void;
+  actions: FlowActions;
 }
 
-export function App({ touch, onResume, onRestart }: Props) {
+export function App({ touch, actions }: Props) {
+  const screen = flowUi.screen.value;
+  if (screen !== 'race') {
+    return (
+      <div class="ui-root menus">
+        {screen === 'title' && <TitleScreen actions={actions} />}
+        {screen === 'briefing' && <BriefingScreen actions={actions} />}
+        {screen === 'standings' && <StandingsScreen actions={actions} />}
+        {screen === 'workshop' && <WorkshopScreen actions={actions} />}
+        {screen === 'trophy' && <TrophyScreen actions={actions} />}
+        {ui.error.value && (
+          <div class="overlay">
+            <div class="panel error">
+              <h1>Cannot start</h1>
+              <p>{ui.error.value}</p>
+            </div>
+          </div>
+        )}
+        <RotateHint />
+      </div>
+    );
+  }
   const players = ui.players.value;
   const split = ui.splitScreen.value;
   const results = ui.results.value;
@@ -30,33 +50,7 @@ export function App({ touch, onResume, onRestart }: Props) {
         {ui.backend.value} · {ui.tier.value} · {Math.round(ui.renderScale.value * 100)}% · {ui.fps.value} fps
       </div>
       {ui.showTouch.value && !split && !results && <TouchControls source={touch} />}
-      {results && (
-        <div class="overlay" data-testid="results">
-          <div class="panel results">
-            <h1>Results</h1>
-            <table>
-              <tbody>
-                {results.map((r, i) => (
-                  <tr key={r.name} class={`${r.isPlayer ? 'me' : ''} ${r.retired ? 'retired' : ''}`} data-testid={`result-${i + 1}`}>
-                    <td>{r.retired ? '—' : i + 1}</td>
-                    <td>
-                      <span class="swatch" style={{ background: r.color }} />
-                      <span class="name">{r.name}</span>
-                    </td>
-                    <td>{r.retired ? 'RETIRED' : r.time !== null ? formatTime(r.time) : 'racing…'}</td>
-                    <td class="dim">best {formatTime(r.bestLap)}</td>
-                    <td class="dim">{r.pf} PF</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <button class="btn" data-testid="restart" onClick={onRestart}>
-              Race again
-            </button>
-            <p class="dim">Enter · Steam push · A</p>
-          </div>
-        </div>
-      )}
+      {results && <ResultsPanel results={results} actions={actions} />}
       {ui.loading.value && (
         <div class="overlay" data-testid="loading">
           <div class="panel">
@@ -64,15 +58,7 @@ export function App({ touch, onResume, onRestart }: Props) {
           </div>
         </div>
       )}
-      {ui.paused.value && (
-        <div class="overlay" data-testid="pause-overlay" onPointerDown={onResume}>
-          <div class="panel pause">
-            <h1>Paused</h1>
-            <Controls split={split} touch={ui.showTouch.value} />
-            <p class="dim">Esc / P / Start, or tap to resume</p>
-          </div>
-        </div>
-      )}
+      {ui.paused.value && !ui.loading.value && <PauseMenu actions={actions} split={split} />}
       {ui.error.value && (
         <div class="overlay">
           <div class="panel error">
@@ -81,11 +67,17 @@ export function App({ touch, onResume, onRestart }: Props) {
           </div>
         </div>
       )}
-      <div class="rotate-hint" data-testid="rotate-hint" onPointerUp={() => void enterFullscreen()}>
-        <div>
-          <p>Rotate the device to landscape</p>
-          <p class="dim">or tap to play fullscreen</p>
-        </div>
+      <RotateHint />
+    </div>
+  );
+}
+
+function RotateHint() {
+  return (
+    <div class="rotate-hint" data-testid="rotate-hint" onPointerUp={() => void enterFullscreen()}>
+      <div>
+        <p>Rotate the device to landscape</p>
+        <p class="dim">or tap to play fullscreen</p>
       </div>
     </div>
   );

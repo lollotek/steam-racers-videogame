@@ -1,6 +1,6 @@
 # 04 — Grand Prix & the four worlds
 
-> Status: **v0.2** (2026-11-13) — milestone plan and world bible. **Phase A implemented** (notes in §9). Decisions G1–G5 and open points G6–G7 in §8.
+> Status: **v0.3** (2026-11-14) — milestone plan and world bible. **Phases A and B implemented** (notes in §9 and §10). Decisions G1–G5 and open points G6–G7 in §8.
 > Depends on: [00 — World & Lore](00-world-lore.md), [01 — Visual direction](01-engine-visual-direction.md) §1.3, [02 — Shader spec](02-shader-style-spec.md) §12–13, [03 — Architecture](03-engine-architecture.md) §7, [gameplay.md](gameplay.md) §2.1, §9.
 > Milestone name: **M4 — Grand Prix** (M3 is the race vertical slice, already implemented).
 
@@ -44,7 +44,7 @@ Each step ends with tests (unit + headless sim where relevant) and a `testing-ch
 | A4 | **Hazard zones** | One generic, deterministic system: a zone on the track with a timed cycle (idle → warning → active), an effect (damage, crash, grip, steam gain/loss, push) and a visual skin per world. AI reads the cycle (skill-dependent timing). |
 | A5 | **Elevation, ramps and jumps** (G4) | Track format: per-piece height change in 4 m levels (doc 03 §7.3): `ramp` (straight that climbs/descends one level), `crest` and `jump` (lip + gap + landing, gap length per size), optional bank on curves later. Compiler: 3D centre line (height + pitch per sample), validation of slopes, gaps and closure in height. Physics: road built as a trimesh/heightfield per piece instead of the flat ground slab; the invisible rail (doc 03 §7.4) works on the 3D samples; walls only where the road is on the ground (jump gaps open). Rules: clean landing gives PV (gameplay.md §5.1), hard landing costs a gear, airborne = no steering and no push, out-of-track fall = reposition. AI: target gear for each jump, no push before a lip. Camera: smooth pitch on slopes, no clipping on crests. Headless stress test with jumps at all masses (no tumble rule of doc 03 §7.4 stays). Overpasses (the road crossing over itself) are **not** in M4. |
 
-### Phase B — Cup flow
+### Phase B — Cup flow ✅ implemented (§10)
 
 | # | Step | Content |
 |---|---|---|
@@ -305,7 +305,7 @@ Shared lore frame: one hundred years after the sealing of the rift, each faction
 | G4 | Elevation | ✅ **Decided (2026-11-13):** real ramps and jumps (step A5); overpasses later |
 | G5 | Grid order in the Cup | ✅ **Decided (2026-11-13):** standings order, leader on pole (gameplay.md §4) |
 | G6 | Art pipeline | Proposal: primitives + procedural painted textures as in M1; GLB kits from Blender later |
-| G7 | Workshop levels and prices, prize scaling for 5–8 racers | Proposal in B2/B3; to tune with the season runner (D1) |
+| G7 | Workshop levels and prices, prize scaling for 5–8 racers | First values in code (§10): prices 20k/35k/55k/80k per level, 8-racer prize table, repair $20k; to tune with the season runner (D1) |
 
 ---
 
@@ -325,3 +325,24 @@ Also changed on the way:
 - Sim numbers on `foundry-01` moved slightly (trimesh road, new avoidance); no repositions, no stuck cars.
 
 Known limits (for phase C): hazard and pickup skins are placeholders; road skirts use one generic material; the terrain near folded parts of an elevated track can show steep faces (cliffs); the stream skin is a straight strip (follows the tangent at its centre, not the curve).
+
+---
+
+## 10. Phase B implementation notes (2026-11-14)
+
+| Step | Where | What is in |
+|---|---|---|
+| B1 Front-end | `src/flow/flow.ts` (Flow controller), `src/ui/Menus.tsx` (screens), `src/ui/menu-nav.ts` (keyboard / gamepad / touch navigation), `src/ui/App.tsx` | Title (Continue Cup when a save exists, Grand Prix, Single race) → players (PC only) → difficulty → vehicle (per player) → track (single race only). Pause menu: Resume, Restart (not in the Cup), Retire, Title. Menus: arrows/WASD + Enter/Space + Esc/Backspace, d-pad/stick + A/B, tap. `?test` and the new `?quick` boot straight into the M3 race from the URL flags (tests and dev); `?test&menu=1` keeps the menus. |
+| B2 Season loop | `src/cup/cup.ts` (pure, unit-tested), Flow | Briefing card (world, track, hazard, grid) → race → results with prize, money bags and repair → Cup standings (finishes per race, earned, cash, workshop levels) → workshop → next briefing; after race 4 → trophy. Grid: race 1 a seeded draw, then standings order with the leader on pole (G5). Prizes 100k/60k/30k/10k (4 racers) or 100k…5k (5–8), × difficulty; money bags $5,000; a wreck pays $20k repair (never below zero), a retirement from the pause menu pays none. Standings = total earned; workshop spending does not count against you. Saved in `localStorage` (`steamRacers.cup.v1`) after every race and purchase; a Cup quit mid-race resumes at that briefing; a finished Cup can still show its trophy, then the save is cleared. |
+| B3 Workshop | `cup.ts` (`UPGRADE_*`, `tuneFor`), `PhysicsVehicle.tune` | Four lines × 4 levels, prices 20k/35k/55k/80k. Acceleration +6 %/level (engine accel), Top speed +2.5 %/level (every gear), Tyres +5 %/level grip, Suspension recovers 12 %/level of the grip loss and drag of rough surfaces. Season only. 2-player Cup: one workshop turn per player. |
+| B4 Difficulty and AI growth | `DIFFICULTY` in `cup.ts`, `ai/driver.ts` | Easy / Normal / Hard: AI skill 0.4 / 0.7 / 0.92, AI pace 0.93 / 0.98 / 1.01 (top speed and accel), +0.6 / 1 / 1.4 % pace per race, prizes × 0.75 / 1 / 1.25. AI shop after every race with the same prices (preferred line order per racer, lowest level first; Hard keeps one repair in reserve). Catch-up: only an AI in the back half, more than `ai.catchUpGap` (60 m) behind the car ahead, gets × 1.03 / 1.03 / 1.02 top speed; never the leader. Single race uses the same AI levels with no upgrades and a random grid. |
+
+Also changed on the way:
+
+- **One Game per race.** `Game` is built from a `RaceSetup` (track, entrants with vehicle, colour, tune, skill; grid; seed) and `dispose()` frees physics, scene GPU resources, render pipelines, tunables listeners and HUD overlays; the procedural texture set is built once and shared. Checked in the browser: tunables listeners go back to the baseline and the world overlays are removed between races.
+- Per-racer grid slot (`RacerConfig.grid`: the pole gets the wider start band) and per-vehicle `tune` / `maxSpeed()` in the sim; the AI read their own top speed.
+- Debug panel and the `window.__steamRacers` test hooks follow the current race (`game` is a getter, `snapshot()` is null on the menus).
+
+Real-phone check (2026-11-14, Realme RMX3370, `tools/phone/cup.ts`): the whole Cup flow works by touch, 43–54 fps in races 1 and 2, JS heap flat at 72 MB across races, save and resume OK. Fixed on the way: sticky main button on short screens (267 px tall with the browser bar), ≥ 44 px touch buttons, compact results table. Each Cup race shows the loading card for ~11–13 s on that phone (shader warm-up per race): to improve in D2. Details in `testing-checklist.md` (M4 phase B, Phone).
+
+Known limits: until phase C the four Cup races run on stand-in layouts (proving ground and foundry, flagged on the briefing); no menu music or sounds; the AI shopping strategy and all prices are first guesses for D1; the results freeze the running order of rivals still racing when the player continues.

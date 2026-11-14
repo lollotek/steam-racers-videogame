@@ -4,6 +4,7 @@
  * gear target speed, steam push, per-surface grip/drag, rear-grip drift and an upright assist.
  * Simulation only: no Three.js.
  */
+import { NEUTRAL_TUNE, type VehicleTune } from '../cup/cup';
 import type RAPIER from '@dimforge/rapier3d-compat';
 import type { ActionFrame } from '../input/actions';
 import { tunables } from '../core/tunables';
@@ -94,6 +95,10 @@ export class PhysicsVehicle {
   /** Hazard zone modifiers for this step (track-features.ts): grip and engine target multipliers. */
   gripMul = 1;
   hazardSlow = 1;
+  /** Workshop / difficulty multipliers (doc 04 B3/B4); neutral by default. */
+  tune: VehicleTune = { ...NEUTRAL_TUNE };
+  /** AI catch-up top speed factor for this step (doc 04 B4; 1 = none). */
+  catchUp = 1;
   /** Wreck (0 PF): engine off for good, brakes locked; stays on the track as an obstacle. */
   wrecked = false;
   /** Half width of the collider (covers the wheels). */
@@ -164,7 +169,7 @@ export class PhysicsVehicle {
   preStep(input: ActionFrame, dt: number, surfaceAt: SurfaceQuery, locked: boolean): GearboxOutput {
     const t = (k: string) => tunables.get(k);
     const vc = this.controller;
-    const maxSpeed = t('handling.maxSpeed');
+    const maxSpeed = this.maxSpeed();
     if (t('handling.mass') !== this.mass) this.applyMass(t('handling.mass'));
     const mass = this.mass;
     const fwdSpeed = vc.currentVehicleSpeed();
@@ -179,7 +184,10 @@ export class PhysicsVehicle {
 
     const pos = this.body.translation();
     const surface = surfaceAt(pos.x, pos.z);
-    const grip = SURFACE_GRIP[surface] * this.gripMul;
+    // Suspension recovers part of what rough surfaces take away; tyres add grip everywhere.
+    const rough = this.tune.rough;
+    const base = SURFACE_GRIP[surface];
+    const grip = (base < 1 ? base + (1 - base) * rough : base) * this.tune.grip * this.gripMul;
     const speedFrac = Math.min(1, Math.abs(fwdSpeed) / maxSpeed);
 
     // Engine: chase the gear target speed (proportional, capped by acceleration).
@@ -193,10 +201,10 @@ export class PhysicsVehicle {
       accel = -Math.min(t('handling.brake'), Math.abs(fwdSpeed) * 4) * Math.sign(fwdSpeed);
     } else {
       const err = target - fwdSpeed;
-      const up = t('handling.accel') * (1 - 0.4 * speedFrac); // a bit less punch near top speed
+      const up = t('handling.accel') * this.tune.accel * (1 - 0.4 * speedFrac); // a bit less punch near top speed
       accel = err > 0 ? Math.min(up, err * 3) : Math.max(-t('handling.engineBrake'), err * 3);
       if (out.pushing) accel += t('handling.pushAccel') * this.gearbox.pushBoost;
-      accel -= SURFACE_DRAG[surface] * speedFrac * Math.sign(fwdSpeed);
+      accel -= SURFACE_DRAG[surface] * (1 - rough) * speedFrac * Math.sign(fwdSpeed);
     }
     const engine = (mass * accel) / nDriven;
     for (let i = 0; i < 4; i++) {
@@ -345,6 +353,11 @@ export class PhysicsVehicle {
     this.edgeSlow = 1;
     this.capture(this.curr);
     Object.assign(this.prev, this.curr);
+  }
+
+  /** Top speed of this vehicle (m/s): `handling.maxSpeed` × workshop × catch-up. */
+  maxSpeed(): number {
+    return tunables.get<number>('handling.maxSpeed') * this.tune.topSpeed * this.catchUp;
   }
 
   /** Yaw (heading) of the body: 0 = +Z. */
