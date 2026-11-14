@@ -31,7 +31,7 @@ export interface PickupSlot {
   kind: PickupKind;
   /** Position along the piece, 0..1 (default 0.5). */
   at?: number;
-  /** Lateral position, -1 (left edge) .. 1 (right edge), × 0.8 half width (default 0). */
+  /** Lateral position: -1 (centre of the left column) .. 1 (centre of the right column); see units.ts (default 0). */
   lane?: number;
 }
 
@@ -64,7 +64,7 @@ export interface HazardSpec {
   at?: number;
   /** Length along the track (m). */
   length?: number;
-  /** Lateral range, -1..1 of the half width (default full width). */
+  /** Lateral range, -1..1 of the half width; column boundaries are multiples of 1/3 (units.ts; default full width). */
   lanes?: [number, number];
   /** Cycle (s): idle, then `warning`, then `active`. */
   period?: number;
@@ -111,9 +111,9 @@ export interface TrackFile {
   id: string;
   name: string;
   biome: string;
-  /** Grid cell size in metres (A6: 20 m). */
+  /** Grid cell size in metres (20 m = 8 squares, units.ts). */
   cell: number;
-  /** Track width in metres. */
+  /** Track width in metres (15 m = 6 squares, units.ts). */
   width: number;
   laps: number;
   defaultSurface: Surface;
@@ -121,7 +121,7 @@ export interface TrackFile {
   /** Height of one level (m, default 4, doc 03 §7.3). */
   level?: number;
   pieces: Piece[];
-  /** Free tile layout saved by the track editor (doc 05 §4); the game ignores it. */
+  /** Free tile layout saved by the track editor (doc 05 §5); the game ignores it. */
   editor?: { version: number; tiles: { x: number; z: number; dir: number; piece: Piece }[] };
 }
 

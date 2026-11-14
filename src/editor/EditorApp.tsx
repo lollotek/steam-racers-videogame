@@ -1,5 +1,5 @@
 /**
- * Track editor page (doc 05 §5): top bar, palette, grid, inspector, status line, keyboard.
+ * Track editor page (doc 05 §6): top bar, palette, grid, inspector, status line, keyboard.
  */
 import { useEffect, useRef } from 'preact/hooks';
 import { TRACKS } from '../tracks';

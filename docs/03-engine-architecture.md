@@ -281,7 +281,7 @@ Optional per piece: `surface` (plate, grate, dirt, sand, oil, water → grip/dra
 
 The compiler (`src/track/compile.ts`, pure, runs in Node) validates closure, overlaps and the start piece, and produces 1 m centre-line samples (position, tangent, distance, curvature, surface, barricades), checkpoints, the spawn grid and bounds. The visual world (road ribbons per surface, barricades per type, start gantry) and the physics colliders are both generated from this data.
 
-**A6 (proposal):** cell = **20 m**, track width 14 m. A tight curve (size 1) has a 10 m radius — a real hairpin/chicane for these vehicles; size 2 and 3 are fast curves. At a 1:200 tabletop scale a cell is a 10 cm tile and a 5 m vehicle a 2.5 cm miniature. To be confirmed with the board game's tile size.
+**A6 (revised 2026-11-14, doc 05 §2):** cell = **20 m** = 8 × 8 squares of 2.5 m, track width **15 m** = 6 squares (one vehicle per square on the board), one edge square per side. A tight curve (size 1) has a 10 m radius — a real hairpin/chicane for these vehicles; size 2 and 3 are fast curves. Printed at 2 cm per square a cell is a 16 × 16 cm module tile (1:125). Crates sit on column centres, hazards cover whole columns and whole squares (`src/track/units.ts`).
 
 ### 7.2 Progress & positions
 
@@ -311,7 +311,7 @@ Editor implementation: **M5, doc 05** (free tile placement, live validation, Pla
 
 ### 7.4 Race simulation core (implemented in M2)
 
-`src/sim/race-sim.ts` (`RaceSim`) owns the Rapier world, the vehicles, progress and race phases (countdown → running → finished). It has no rendering or DOM imports and is used unchanged by the game and the headless runner. Starting grid: 2 staggered columns behind the line, spacing tunable (`race.grid*`, default 14 m between rows, left column 7 m back, columns at ±0.5 × half width) so the start is not a pile-up. Static colliders: ground slab and barrier walls every 4 m on both edges (taller than the visible barricades so cars are never launched out). Safety nets: auto-reposition after 2.5 s stuck/upside down or 1 s out of bounds; manual reposition action. Determinism: same inputs → identical positions (unit test).
+`src/sim/race-sim.ts` (`RaceSim`) owns the Rapier world, the vehicles, progress and race phases (countdown → running → finished). It has no rendering or DOM imports and is used unchanged by the game and the headless runner. Starting grid: 2 staggered columns behind the line, spacing tunable (`race.grid*`, default 12.5 m between rows, left column 7.5 m back, columns at ±0.5 × half width = the centres of columns 2 and 5 of the tabletop grid) so the start is not a pile-up. Static colliders: ground slab and barrier walls every 4 m on both edges (taller than the visible barricades so cars are never launched out). Safety nets: auto-reposition after 2.5 s stuck/upside down or 1 s out of bounds; manual reposition action. Determinism: same inputs → identical positions (unit test).
 
 Vehicles (`src/vehicles/`): `gearbox.ts` (pure gear/push/brake logic) + `vehicle-physics.ts` (Rapier ray-cast vehicle controller with the arcade layer: engine force chases the gear target speed, push, surface grip/drag, rear-grip drift, upright assist; wheel rays ignore other vehicles). Tunables groups `handling`, `gearbox`, `race`.
 
@@ -600,5 +600,5 @@ After M4: garage/upgrades, modules, full arsenal, cards and race events, driving
 | A3 | Track authoring | ✅ **Decided (2026-11-12):** block-based grid editor + generated surroundings, compatible with tabletop tiles/miniatures (§7.3); after M3. |
 | A4 | Distribution | ✅ **Decided (2026-11-12):** PWA only. |
 | A5 | Gameplay reference | ✅ **Decided (2026-11-12):** [gameplay.md](gameplay.md); simple gameplay up to M3, advanced systems after. |
-| A6 | Block size vs tabletop tile size and vehicle scale | ✅ **Decided (2026-11-13):** keep 20 m cells and a 14 m track (§7.1.1); the requirement is that 4 vehicles fit side by side, which the current width satisfies. |
+| A6 | Block size vs tabletop tile size and vehicle scale | ✅ **Revised (2026-11-14):** tabletop grid of squares (doc 05 §2): 20 m cell = 8 × 8 squares of 2.5 m, track 15 m = 6 squares + 1 edge square per side, printed 2 cm per square (16 × 16 cm module tiles, 1:125). |
 | A7 | Gameplay values (`rules` groups referenced in gameplay.md: gear speeds, PV costs, boiler timings, damage) | ✅ **Decided (2026-11-13):** keep the current placeholder values (all tunable via `?debug`, §7.5); adjust them after playtests. |

@@ -80,7 +80,7 @@ Suggested order: A1 → A2 → A5 (elevation changes physics and the format, so 
 
 - Real height changes (A5): ramps between 4 m levels and jumps; on top of that, depth from the surroundings (walls rising, chasms falling away, arches **over** the track as non-colliding set pieces). Each track uses elevation in its own way (§7: descent, bridge, jumps, canopy levels).
 - Lap length **1.0–1.4 km**, lap time target **55–75 s** with a mid upgrade level; 3 laps.
-- 14 m wide (A6): 4 cars side by side everywhere; chicanes use 10 m hairpins sparingly (max 2 per track).
+- 15 m wide (A6, 6 squares of the tabletop grid, doc 05 §2): 4 cars side by side everywhere; chicanes use 10 m hairpins sparingly (max 2 per track).
 - Every track has: one long straight for the cannon and slipstream, one hairpin, one surface change, at least three barricade types, one signature hazard, one landmark visible from the start grid.
 - Readability (doc 02 §13): road is always mid-value and lower saturation than the vehicles; world accents (runes, neon, gas light) never use the racer identity colours; hazard warning = orange (shared across worlds), pickups = a reserved brass-white glow with a ring on the ground.
 

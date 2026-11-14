@@ -14,15 +14,16 @@ export interface HazardPreset {
   effects: Partial<Record<HazardPhase, HazardEffect>>;
 }
 
+/** Lengths are whole squares (2.5 m) and lanes follow column boundaries (multiples of 1/3), units.ts. */
 export const HAZARD_PRESETS: Record<HazardKind, HazardPreset> = {
   // Dwarven forge vents: a grate across the road over a magma channel; fire jets.
-  vent: { length: 6, lanes: [-1, 1], period: 11, warning: 1.5, active: 1.5, effects: { active: { damage: 1, steam: 1 } } },
+  vent: { length: 5, lanes: [-1, 1], period: 11, warning: 1.5, active: 1.5, effects: { active: { damage: 1, steam: 1 } } },
   // Victorian level crossing: barriers drop (slow), then the train (crash, heavy damage).
   crossing: { length: 10, lanes: [-1, 1], period: 25, warning: 3, active: 4, effects: { warning: { slow: 0.6 }, active: { crash: true, damage: 3 } } },
   // Orc magnet crane: a scrap block drops on part of the road and stays there as a wall.
-  crane: { length: 8, lanes: [-1, 0.1], period: 14, warning: 2, active: 6, effects: { active: { damage: 4, solid: true } } },
+  crane: { length: 7.5, lanes: [-1, 0], period: 14, warning: 2, active: 6, effects: { active: { damage: 4, solid: true } } },
   // Elven sap streams: lit lanes give steam on the pulse, are slippery between pulses.
-  stream: { length: 30, lanes: [-0.35, 0.35], period: 6, warning: 0, active: 2.5, effects: { active: { steamRate: 1.5 }, idle: { grip: 0.75 } } },
+  stream: { length: 30, lanes: [-1 / 3, 1 / 3], period: 6, warning: 0, active: 2.5, effects: { active: { steamRate: 1.5 }, idle: { grip: 0.75 } } },
 };
 
 /** A hazard placed on the compiled track. */

@@ -4,6 +4,8 @@
  */
 import type { CompiledTrack } from './compile';
 import { asArray, type Barricade, type Surface } from './track-format';
+import { resolveHazard } from './hazards';
+import { CELL, SQUARE, WIDTH, boundOfLine, columnOfLane, laneOfColumn, lineOfBound } from './units';
 
 export interface TrackReport {
   id: string;
@@ -80,5 +82,27 @@ export function checkTrack(t: CompiledTrack): TrackReport {
   if (report.landmarks < 1) P.push('no landmark');
   if (pieces.every((p) => !p.rise && !p.crest && p.type !== 'jump')) P.push('no elevation');
   if (!pieces.some((p) => asArray(p.pickups).length)) P.push('no crates');
+  P.push(...tabletopProblems(t.file));
   return report;
+}
+
+const near = (a: number, b: number) => Math.abs(a - b) < 1e-3;
+
+/** Tabletop grid (units.ts): 20 m cells, 15 m road, crates on column centres, hazards on whole squares. */
+export function tabletopProblems(file: CompiledTrack['file']): string[] {
+  const P: string[] = [];
+  if (file.cell !== CELL) P.push(`cell ${file.cell} m: the tabletop grid needs ${CELL} m`);
+  if (file.width !== WIDTH) P.push(`width ${file.width} m: the tabletop grid needs ${WIDTH} m`);
+  file.pieces.forEach((p, i) => {
+    for (const s of asArray(p.pickups)) {
+      const lane = s.lane ?? 0;
+      if (!near(lane, laneOfColumn(columnOfLane(lane)))) P.push(`piece ${i}: crate lane ${lane} is not on a column`);
+    }
+    for (const spec of asArray(p.hazard)) {
+      const h = resolveHazard(spec);
+      if (!h.lanes.every((v) => near(v, boundOfLine(lineOfBound(v))))) P.push(`piece ${i}: ${spec.kind} lanes are not on column lines`);
+      if (!near(h.length / SQUARE, Math.round(h.length / SQUARE))) P.push(`piece ${i}: ${spec.kind} length ${h.length} m is not whole squares`);
+    }
+  });
+  return P;
 }

@@ -30,6 +30,7 @@ import type { ImpactInfo } from '../sim/race-sim';
 import type { Barricade } from '../track/track-format';
 import { FollowCamera, dampAngle } from './follow-camera';
 import { buildWorld, type GameWorld } from '../world/build';
+import { squareGrid } from '../world/square-grid';
 import { getBiome } from '../biomes';
 import { FeatureViews } from './feature-views';
 import { buildHotRod, buildSteamTank, type VehicleRig } from './vehicles';
@@ -233,6 +234,7 @@ export class Game {
     // Rain is drawn from the medium tier up (doc 04 D2: weather drops first).
     this.world = buildWorld(getBiome(this.trackFile.biome), this.tex, flags.seed, compileTrack(this.trackFile), { rain: opts.tier !== 'low' });
     this.scene = this.world.scene;
+    if (flags.grid) this.scene.add(squareGrid(compileTrack(this.trackFile)));
     this.particles = new ParticleSystem(this.scene, this.tex.puff, flags.seed + 99);
     for (const e of this.world.emitters) this.particles.addEmitter(e);
     this.sparks = new SparkSystem(this.scene, flags.seed + 7);

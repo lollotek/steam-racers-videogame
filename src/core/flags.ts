@@ -11,7 +11,8 @@
  *   ?track=id         track file from src/tracks (default foundry-01)
  *   ?test             expose test hooks on window
  *   ?fullscreen=0     phones: do not enter fullscreen on the first tap
- *   ?custom           race the track handed over by the track editor (doc 05 §6)
+ *   ?custom           race the track handed over by the track editor (doc 05 §7)
+ *   ?grid             draw the tabletop squares on the road (doc 05 §2)
  *   ?quick            skip the menus: straight into a race from these flags (implied by ?test;
  *                     ?test&menu=1 keeps the menus)
  */
@@ -33,6 +34,8 @@ export interface Flags {
   quick: boolean;
   /** Race the editor's track (localStorage `steamRacers.customTrack`). */
   custom: boolean;
+  /** Draw the tabletop squares on the road. */
+  grid: boolean;
 }
 
 const TIERS: readonly QualityTierName[] = ['low', 'medium', 'high', 'ultra'];
@@ -58,6 +61,7 @@ export function parseFlags(search: string): Flags {
     track: p.get('track') && /^[a-z0-9-]+$/.test(p.get('track')!) ? p.get('track') : null,
     fullscreen: p.get('fullscreen') !== '0',
     custom: p.has('custom') && p.get('custom') !== '0',
+    grid: p.has('grid') && p.get('grid') !== '0',
     quick: (p.has('quick') && p.get('quick') !== '0') || (p.has('test') && p.get('menu') !== '1'),
   };
 }

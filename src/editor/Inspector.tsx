@@ -1,5 +1,5 @@
 /**
- * Right panel (doc 05 §5): the selected tile, or the track settings; always the validation report.
+ * Right panel (doc 05 §6): the selected tile, or the track settings; always the validation report.
  */
 import { useEffect, useState } from 'preact/hooks';
 import {
@@ -16,6 +16,8 @@ import {
   asArray,
 } from '../track/track-format';
 import { TRACKS } from '../tracks';
+import { resolveHazard } from '../track/hazards';
+import { ROAD_SQUARES, WIDTH, boundOfLine, columnOfLane, laneOfColumn, lineOfBound } from '../track/units';
 import { slug } from './layout';
 import { commit, doc, selected, updatePiece, validation } from './store';
 
@@ -44,6 +46,15 @@ export const WORLDS = (() => {
 })();
 
 const num = (v: string) => (v === '' ? undefined : Number(v));
+
+const COLUMNS = Array.from({ length: ROAD_SQUARES }, (_, c) => c);
+/** Column ranges [first line, last line] (line 0 = left edge … 6 = right edge). */
+const SPANS: [number, number][] = COLUMNS.flatMap((a) => COLUMNS.filter((c) => c >= a).map((c): [number, number] => [a, c + 1]));
+const spanKey = (l: [number, number]) => `${lineOfBound(l[0])}-${lineOfBound(l[1])}`;
+const spanLanes = (k: string): [number, number] => {
+  const [a, b] = k.split('-').map(Number);
+  return [boundOfLine(a!), boundOfLine(b!)];
+};
 
 function Select<T extends string>({ value, options, onChange, def }: { value: T | undefined; options: readonly T[]; onChange: (v: T | undefined) => void; def?: string }) {
   return (
@@ -141,13 +152,15 @@ function TileInspector({ id }: { id: number }) {
       </Row>
 
       <h3>
-        Crates <button onClick={() => setPickups([...pickups, { kind: 'coal', at: 0.5, lane: 0 }])}>+</button>
+        Crates <button onClick={() => setPickups([...pickups, { kind: 'coal', at: 0.5, lane: laneOfColumn(3) }])}>+</button>
       </h3>
       {pickups.map((s, i) => (
         <div class="item" key={i}>
           <Select value={s.kind} options={PICKUP_KINDS} onChange={(v) => setPickups(pickups.map((o, k) => (k === i ? { ...o, kind: v ?? 'coal' } : o)))} />
           <input title="Along the piece 0..1" type="number" min={0} max={1} step={0.05} value={s.at ?? 0.5} onChange={(e) => setPickups(pickups.map((o, k) => (k === i ? { ...o, at: Number((e.currentTarget as HTMLInputElement).value) } : o)))} />
-          <input title="Lane −1 (left) .. 1 (right)" type="number" min={-1} max={1} step={0.1} value={s.lane ?? 0} onChange={(e) => setPickups(pickups.map((o, k) => (k === i ? { ...o, lane: Number((e.currentTarget as HTMLInputElement).value) } : o)))} />
+          <select title="Column, 1 = left … 6 = right (driver's view)" value={columnOfLane(s.lane ?? 0)} onChange={(e) => setPickups(pickups.map((o, k) => (k === i ? { ...o, lane: laneOfColumn(Number((e.currentTarget as HTMLSelectElement).value)) } : o)))}>
+            {COLUMNS.map((c) => <option key={c} value={c}>col {c + 1}</option>)}
+          </select>
           <button onClick={() => setPickups(pickups.filter((_, k) => k !== i))}>×</button>
         </div>
       ))}
@@ -159,6 +172,9 @@ function TileInspector({ id }: { id: number }) {
         <div class="item" key={i}>
           <Select value={h.kind} options={HAZARD_KINDS} onChange={(v) => setHazards(hazards.map((o, k) => (k === i ? { ...o, kind: v ?? 'vent' } : o)))} />
           <input title="Along the piece 0..1" type="number" min={0} max={1} step={0.05} value={h.at ?? 0.5} onChange={(e) => setHazards(hazards.map((o, k) => (k === i ? { ...o, at: Number((e.currentTarget as HTMLInputElement).value) } : o)))} />
+          <select title="Columns covered (1 = left … 6 = right)" value={spanKey(resolveHazard(h).lanes)} onChange={(e) => setHazards(hazards.map((o, k) => (k === i ? { ...o, lanes: spanLanes((e.currentTarget as HTMLSelectElement).value) } : o)))}>
+            {SPANS.map(([a, b]) => <option key={`${a}-${b}`} value={`${a}-${b}`}>{a === b - 1 ? `col ${b}` : `col ${a + 1}–${b}`}</option>)}
+          </select>
           <button onClick={() => setHazards(hazards.filter((_, k) => k !== i))}>×</button>
         </div>
       ))}
@@ -228,7 +244,10 @@ function TrackSettings() {
         <input type="number" min={1} max={9} value={m.laps} onChange={(e) => set({ laps: Math.max(1, Math.min(9, Number((e.currentTarget as HTMLInputElement).value) || 3)) })} />
       </Row>
       <Row label="Width (m)">
-        <input type="number" min={10} max={18} step={1} value={m.width} onChange={(e) => set({ width: Math.max(10, Math.min(18, Number((e.currentTarget as HTMLInputElement).value) || 14)) })} />
+        <span class="fixed">
+          {m.width} m{m.width === WIDTH ? ` (${ROAD_SQUARES} squares)` : ''}
+          {m.width !== WIDTH && <button onClick={() => set({ width: WIDTH })}>Use {WIDTH} m</button>}
+        </span>
       </Row>
       <Row label="Level height (m)">
         <input type="number" min={2} max={8} step={0.5} value={m.level ?? 4} onChange={(e) => set({ level: Number((e.currentTarget as HTMLInputElement).value) || 4 })} />

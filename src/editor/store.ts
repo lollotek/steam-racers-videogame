@@ -1,5 +1,5 @@
 /**
- * Editor state (doc 05 §5): the document with undo / redo, the selection, the tool being placed,
+ * Editor state (doc 05 §6): the document with undo / redo, the selection, the tool being placed,
  * the live validation and the autosave of the last track.
  */
 import { computed, signal } from '@preact/signals';
@@ -22,7 +22,7 @@ import {
 
 export const AUTOSAVE_KEY = 'steamRacers.editor.doc';
 
-/** Palette entries (doc 05 §5). */
+/** Palette entries (doc 05 §6). */
 export interface PaletteItem {
   key: string;
   label: string;

@@ -1,5 +1,5 @@
 /**
- * Hand-off of an editor track to the game (doc 05 §6): the editor stores it, `/?custom` races it.
+ * Hand-off of an editor track to the game (doc 05 §7): the editor stores it, `/?custom` races it.
  */
 import type { TrackFile } from '../track/track-format';
 

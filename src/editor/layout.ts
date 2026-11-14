@@ -1,5 +1,5 @@
 /**
- * Tile layout model of the track editor (doc 05 §3). Pure data + grid math: no DOM, runs in Node.
+ * Tile layout model of the track editor (doc 05 §4). Pure data + grid math: no DOM, runs in Node.
  *
  * Tiles are placed freely on the grid; the track is the chain found by walking from the start tile
  * through the connected sockets. Cells and directions are the compiler's (compile.ts `pieceCells`):
@@ -9,6 +9,7 @@
 import { type Piece, type TrackFile, asArray } from '../track/track-format';
 import { compileTrack, TrackError, type CompiledTrack } from '../track/compile';
 import { checkTrack, type TrackReport } from '../track/rules';
+import { CELL, WIDTH } from '../track/units';
 
 export type Dir = 0 | 1 | 2 | 3;
 export interface Cell {
@@ -280,8 +281,8 @@ export function defaultMeta(): TrackMeta {
     id: 'new-track',
     name: 'New Track',
     biome: 'foundry',
-    cell: 20,
-    width: 14,
+    cell: CELL,
+    width: WIDTH,
     laps: 3,
     level: 4,
     defaultSurface: 'plate',

@@ -12,12 +12,34 @@ The block-based level editor announced in doc 03 §7.3 (A3). A separate page of 
 | E-D | Test drive | "Play" opens the game in a **new tab** (`/?custom`) with defaults: 1 player, 3 AI rivals, Normal difficulty. |
 | E-E | World | The world (biome) of the track is chosen in the editor; it drives the 3D preview, the tileset render and the dressing in game. |
 | E-F | 3D preview | In scope: a 3D view of the real world (same builder as the game) beside the grid. |
-| E-G | Tabletop tiles | "Show tileset": **rendered** top-down images (the game's ink look), **15 × 15 cm per grid cell**, **one tile per piece of the current track** (a piece of n cells prints at its footprint, e.g. a 3-cell straight is 15 × 45 cm, a size-3 curve 45 × 45 cm). |
+| E-G | Tabletop tiles | "Show tileset": **rendered** top-down images (the game's ink look), one **16 × 16 cm module tile per grid cell** (§2). Multi-cell pieces (big curves, long straights) are **split into module tiles**, labelled with the piece number and the part. |
 | E-H | Cup and build | Later (E5): a dev-only way to save editor tracks into `src/tracks` and choose which tracks make up each Grand Prix. |
+| E-I | Tabletop grid | **Squares** (decided 2026-11-14, see §2): one vehicle per square, 8 × 8 squares per grid cell, 6 road squares + 1 edge square per side, 2 cm per printed square, 2.5 m per square in 3D. |
 
-Scale: 20 m cell → 15 cm, i.e. **1:133**; a 5 m vehicle is a 3.75 cm miniature (doc 03 A6 assumed 10 cm cells at 1:200; this replaces it).
+## 2. Tabletop grid (`src/track/units.ts`)
 
-## 2. Phases
+| Quantity | Squares | 3D | Printed |
+|---|---|---|---|
+| Square (one vehicle) | 1 | 2.5 m | 2 cm |
+| Road width (6 columns) | 6 | 15 m | 12 cm |
+| Edge band per side (barricade type) | 1 | 2.5 m | 2 cm |
+| Grid cell = module tile | 8 × 8 | 20 m | 16 × 16 cm |
+
+Scale **1:125**. The 3D vehicles (about 2 × 5 m) are one square wide and two long: on the board a miniature takes one square (abstraction).
+
+Why a square 8 × 8 module rather than a 6 × 8 straight: tiles must rotate and a loop closed in the editor must close on the table, so every tile is the same square module; with 6 road squares filling the whole cell a size-1 curve would have a zero inner radius. With the module, a size-1 curve has the road between 1 and 7 squares from its corner and the edge bands on 0–1 and 7–8.
+
+Rules derived from the grid (the compiler and the Cup report enforce / check them):
+
+- Every track uses `cell` 20 and `width` 15 (`tabletopProblems` in `track/rules.ts` reports anything else).
+- **Crates** sit on a column centre: `lane` = −1, −0.6, −0.2, 0.2, 0.6, 1 (columns 1–6 from the left); lateral offset = lane × (half width − half a square). The inspector edits columns, not lanes.
+- **Hazards** cover whole columns (`lanes` bounds are multiples of 1/3 of the half width) and whole squares in length (presets: vent 5 m, crossing 10 m, crane 7.5 m, stream 30 m).
+- **Start grid**: columns 2 and 5 (±0.5 × half width), rows 12.5 m (5 squares) apart, left column 7.5 m (3 squares) back.
+- `?grid` in the game draws the squares on the road (column lines along the road, cross lines every 2.5 m: radial on curves).
+
+The standard tracks were migrated on 2026-11-14 (width 14 → 15, crate lanes snapped to the nearest column).
+
+## 3. Phases
 
 | Phase | Content | Status |
 |---|---|---|
@@ -25,9 +47,10 @@ Scale: 20 m cell → 15 cm, i.e. **1:133**; a 5 m vehicle is a 3.75 cm miniature
 | **E2** | Play button → new tab, `?custom` boot in the game | ✅ |
 | E3 | 3D preview panel (world builder + orbit camera, rebuilt on change) | — |
 | E4 | Tileset view: orthographic render per piece, print sheets with cut marks, layout sheet | — |
+| **G1** | Tabletop grid: units, width 15, crate columns, hazard columns / squares, start grid, editor squares and edge bands, `?grid` | ✅ |
 | E5 | Dev-only "save to project" + Cup configuration file | — |
 
-## 3. Tile layout model (`src/editor/layout.ts`)
+## 4. Tile layout model (`src/editor/layout.ts`)
 
 Pure data, no DOM, runs in Node (unit tested).
 
@@ -40,12 +63,12 @@ Pure data, no DOM, runs in Node (unit tested).
 - **Height** is not stored per tile: levels come from the `rise` of the pieces along the chain (as in the track format). The grid shows the level of each tile.
 - **Overpasses** (the road crossing over itself) are still out of scope: one tile per cell.
 
-## 4. File format
+## 5. File format
 
 Saved files are ordinary `TrackFile`s (doc 03 §7.1.1): `pieces` is the walked chain, so a saved file can go straight into `src/tracks`. The editor adds an optional `editor` field the game ignores:
 
 ```json
-{ "id": "…", "name": "…", "biome": "orc", "cell": 20, "width": 14, "laps": 3, "level": 4,
+{ "id": "…", "name": "…", "biome": "orc", "cell": 20, "width": 15, "laps": 3, "level": 4,
   "defaultSurface": "sand", "defaultBarricade": "tyres",
   "pieces": [ … ],
   "editor": { "version": 1, "tiles": [ { "x": 0, "z": 0, "dir": 0, "piece": { "type": "start", "size": 3 } }, … ] } }
@@ -55,14 +78,14 @@ Loading: with `editor.tiles` the layout is restored as saved (unconnected tiles 
 
 Storage keys: `steamRacers.editor.doc` (autosave of the last track), `steamRacers.customTrack` (the track handed to the game by Play).
 
-## 5. Editor page (E1)
+## 6. Editor page (E1)
 
 | Area | Content |
 |---|---|
 | Top bar | New, Open file…, Standard track (list of `src/tracks`), Save JSON, Undo / Redo, **Play**, 3D preview (E3), Show tileset (E4) |
 | Palette (left) | Start, straight, ramp (straight with rise), crest, curve 1 / 2 / 3, jump 2 / 3 |
-| Grid (centre) | Top view (north up, the driver's right on the right): road coloured by surface, barricades on the edges by type, travel arrows, jump gaps, crates, hazards, landmark footprints, level per tile; the open end and the ghost of the tile being placed (green = free, red = blocked) |
-| Inspector (right) | Selected tile: size, turn, surface, barricades, rise, crest, zone, crates, hazards, landmark, raw JSON. Nothing selected: track settings (name, id, world, laps, width, level height, default surface / barricade). Always: validation and the Cup report |
+| Grid (centre) | Top view (north up, the driver's right on the right): road coloured by surface, edge bands one square wide coloured by barricade type, squares and column lines when zoomed in, travel arrows, jump gaps, crates, hazards, landmark footprints, level per tile; the open end and the ghost of the tile being placed (green = free, red = blocked) |
+| Inspector (right) | Selected tile: size, turn, surface, barricades, rise, crest, zone, crates, hazards, landmark, raw JSON. Crates and hazards are placed by column. Nothing selected: track settings (name, id, world, laps, width (fixed at 15 m, a button fixes older files), level height, default surface / barricade). Always: validation and the Cup report |
 
 Controls: left click places the current piece or selects a tile; drag a selected tile to move it; right / middle drag or drag on empty ground pans; wheel zooms. `R` rotates (piece being placed or selected tile), `F` flips a curve, `V` reverses the selected tile, `Enter` appends the current piece at the open end, `Del` deletes, `Esc` back to select, `Ctrl+Z` / `Ctrl+Y` undo / redo, `1`–`9` palette.
 
@@ -70,27 +93,29 @@ Hovering the open end cell orients the ghost to the open end automatically.
 
 Zone and landmark names are suggested per world from the zones and landmarks the standard tracks of that world use (the biome's `decorate` / `landmark` code is what gives them meaning).
 
-## 6. Play (E2)
+## 7. Play (E2)
 
 Play is enabled when the track compiles. It writes the track to `steamRacers.customTrack` and opens `/?custom` in a named tab (`steam-racers-play`, reused by the next Play). In the game, `?custom` (`flags.custom`) makes `Flow.boot` start a single race on that track: player 1 + 3 AI, Normal, random grid. Results offer Again / Title as usual. Without a stored track the game falls back to the title screen.
 
-## 7. 3D preview (E3, plan)
+## 8. 3D preview (E3, plan)
 
 A second canvas in the editor built with the game's renderer and `world/build.ts` from the compiled track and the chosen biome, orbit camera (drag, wheel), "board camera" button; rebuilt (debounced) when the track compiles after an edit. Dressing seed editable with a reroll button (doc 03 §7.3).
 
-## 8. Tileset (E4, plan)
+## 9. Tileset (E4, plan)
 
-- One tile per piece of the current track, numbered in race order (`#1` = start).
-- Rendered orthographically from above with the ink pipeline at 300 dpi: 15 cm = 1772 px per cell. Includes the dressing inside the piece footprint, crates, hazard markings, travel arrow, level badge and the piece number.
-- Print sheets: tiles with 3 mm bleed and cut marks, A4 / A3 via the browser's print to PDF; tiles larger than the sheet are split per cell with join marks.
+- One **module tile (16 × 16 cm) per grid cell** of each piece, numbered in race order (`#7` = 7th piece; multi-cell pieces `#7 · 2/3`). Cells of a big curve that the road does not touch are not printed.
+- Rendered orthographically from above with the ink pipeline at 300 dpi: 16 cm = 1890 px per module (2 cm = 236 px per square). Includes the dressing inside the module, crates, hazard markings, travel arrow, level badge and the piece number; the edge bands show the barricade type.
+- **Squares on curves — option for playtests** (setting in the tileset view):
+  - **Grid** (current board game rules): the module's 8 × 8 square grid printed over the road everywhere, curves included; a vehicle stands on whatever square it covers.
+  - **Lanes**: on curves, the 6 columns become 6 concentric lanes, each split into spaces about one square long along its arc (inner lanes have fewer spaces); straights are unchanged.
+- Print sheets: tiles with 3 mm bleed and cut marks via the browser's print to PDF; one module per A4, two per A3.
 - Layout sheet: the whole track from above with the numbered tiles.
-- Open point to confirm before E4: whether multi-cell pieces stay one big tile or are always printed as 15 × 15 cm cell tiles.
 
-## 9. Cup and build (E5, plan)
+## 10. Cup and build (E5, plan)
 
 A Vite dev-server plugin exposes `POST /__editor/save` (dev only) that writes `src/tracks/<id>.json`; the editor shows "Save to project" in dev builds. Cup rounds move from code to `src/cup/cups.json` (Cup → ordered track ids), edited from the editor; `src/tracks/index.ts` picks up every JSON in the folder (`import.meta.glob`).
 
-## 10. Tests
+## 11. Tests
 
 - `tests/unit/editor-layout.test.ts`: chain → tiles → chain round trip for every standard track (pieces identical, compiled cells identical), backward traversal and normalisation, broken / open / unconnected cases, compiler error mapping.
 - `tests/e2e/editor.spec.ts`: `/mapeditor/` loads without errors, a standard track loads and validates, Play stores the track.

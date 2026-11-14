@@ -212,7 +212,25 @@ h3 button {
   stroke-dasharray: 0.05 0.05;
 }
 .tile .edge {
-  stroke-width: 0.07;
+  stroke-linecap: butt;
+}
+.tile .column {
+  stroke: #1b1210a0;
+  stroke-width: 0.014;
+  stroke-dasharray: 0.03 0.03;
+}
+.squares {
+  pointer-events: none;
+}
+.gridline.square {
+  stroke: #1b121080;
+  stroke-width: 0.01;
+}
+.row .fixed {
+  color: var(--steam);
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 .tile .arrow {
   fill: none;

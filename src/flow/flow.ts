@@ -67,7 +67,7 @@ export class Flow implements FlowActions {
 
   /** Menus unless `quick` (tests and dev: `?test`, `?quick`). */
   async boot(): Promise<void> {
-    // Test drive from the track editor (doc 05 §6): 1 player + 3 AI, Normal.
+    // Test drive from the track editor (doc 05 §7): 1 player + 3 AI, Normal.
     const custom = this.ctx.flags.custom ? loadCustomTrack(this.ctx.store) : null;
     if (custom) {
       this.startSingle({ players: 1, difficulty: 'normal', vehicles: ['hotrod'] }, custom, 4);

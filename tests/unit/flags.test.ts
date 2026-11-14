@@ -15,10 +15,11 @@ describe('parseFlags', () => {
       laps: null,
       track: null,
       quick: false,
-      custom: false,
+      custom: false, grid: false,
       fullscreen: true,
     });
     expect(parseFlags('?custom').custom).toBe(true);
+    expect(parseFlags('?grid').grid).toBe(true);
   });
 
   it('parses all flags and clamps values', () => {

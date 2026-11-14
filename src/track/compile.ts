@@ -20,11 +20,12 @@ import {
 } from './track-format';
 import { type CompiledHazard, resolveHazard } from './hazards';
 import { tunables } from '../core/tunables';
+import { LANE_REACH } from './units';
 
 tunables.registerGroup('race', [
-  { key: 'race.gridFirst', type: 'number', default: 6, min: 2, max: 30, step: 0.5, unit: 'm', label: 'Grid: pole behind the line' },
-  { key: 'race.gridRowGap', type: 'number', default: 14, min: 6, max: 30, step: 0.5, unit: 'm', label: 'Grid: distance between rows' },
-  { key: 'race.gridStagger', type: 'number', default: 7, min: 0, max: 15, step: 0.5, unit: 'm', label: 'Grid: left column offset back' },
+  { key: 'race.gridFirst', type: 'number', default: 6.25, min: 2, max: 30, step: 0.25, unit: 'm', label: 'Grid: pole behind the line' },
+  { key: 'race.gridRowGap', type: 'number', default: 12.5, min: 6, max: 30, step: 0.5, unit: 'm', label: 'Grid: distance between rows' },
+  { key: 'race.gridStagger', type: 'number', default: 7.5, min: 0, max: 15, step: 0.5, unit: 'm', label: 'Grid: left column offset back' },
   { key: 'race.gridLateral', type: 'number', default: 0.5, min: 0.2, max: 0.7, step: 0.01, label: 'Grid: columns from centre (× half width)' },
 ]);
 
@@ -319,7 +320,7 @@ export function compileTrack(file: TrackFile, spacing = 1): CompiledTrack {
   const hazards: CompiledHazard[] = [];
   const landmarks: CompiledLandmark[] = [];
   const jumps: CompiledJump[] = [];
-  const reach = halfWidth * 0.8;
+  const reach = halfWidth * LANE_REACH;
   file.pieces.forEach((p, idx) => {
     for (const slot of p.pickups ?? []) {
       if (!PICKUP_KINDS.includes(slot.kind)) throw new TrackError(`Piece ${idx}: unknown pickup "${slot.kind}"`);

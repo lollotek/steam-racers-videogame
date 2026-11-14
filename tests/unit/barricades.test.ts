@@ -112,7 +112,7 @@ describe('track edge (invisible rail)', () => {
     for (let n = 0; n < 60 * 12 && !stoppedInFirst; n++) {
       f.pressed.steamPush = f.held.steamPush = sim.phase === 'running' && !crashed && n % 70 === 0;
       // From the right-hand grid slot, full lock left: across the whole track into the far edge.
-      f.steer = sim.clock > 2.2 && !crashed ? -1 : 0;
+      f.steer = sim.clock > 2.5 && !crashed ? -1 : 0;
       sim.step([f]);
       for (const e of sim.drainEvents()) if (e.impact?.kind === 'crash') crashed = true;
       if (crashed && v.speed() < 2.5 && v.gearbox.gear === 1) stoppedInFirst = true;
