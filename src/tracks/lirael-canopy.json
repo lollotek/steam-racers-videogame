@@ -1,0 +1,32 @@
+{
+  "id": "lirael-canopy",
+  "name": "Lirael Canopy",
+  "biome": "elven",
+  "cell": 20,
+  "width": 14,
+  "laps": 3,
+  "level": 4,
+  "defaultSurface": "heartwood",
+  "defaultBarricade": "roots",
+  "pieces": [
+    { "type": "start", "size": 3, "zone": "gate", "pickups": [{ "kind": "coal", "at": 0.15, "lane": 0.6 }] },
+    { "type": "straight", "size": 6, "zone": "avenue", "left": "crystal", "right": "crystal", "hazard": { "kind": "stream", "at": 0.5, "length": 50 } },
+    { "type": "curve", "size": 3, "turn": "R", "right": "earth" },
+    { "type": "straight", "size": 6, "surface": "flagstone", "zone": "path", "left": "crystal", "right": "earth", "pickups": [{ "kind": "money", "at": 0.5, "lane": 0.5 }] },
+    { "type": "curve", "size": 3, "turn": "L", "rise": 1, "surface": "moss", "left": "earth" },
+    { "type": "curve", "size": 3, "turn": "R", "rise": 1, "zone": "mother", "right": "crystal", "landmark": { "id": "mother-tree", "side": "R", "at": 1, "offset": 43, "radius": 26 } },
+    { "type": "curve", "size": 3, "turn": "R", "zone": "mother", "right": "crystal", "hazard": { "kind": "stream", "at": 0.5, "length": 50 } },
+    { "type": "straight", "size": 6, "zone": "bridge", "left": "crystal", "right": "crystal", "pickups": [{ "kind": "coal", "at": 0.4, "lane": -0.5 }] },
+    { "type": "jump", "size": 2, "rise": -1, "zone": "mist", "left": "crystal", "right": "crystal" },
+    { "type": "straight", "size": 1, "zone": "mist" },
+    { "type": "straight", "size": 2, "surface": "water", "zone": "ford", "left": "earth", "right": "earth" },
+    { "type": "curve", "size": 3, "turn": "R", "surface": "moss" },
+    { "type": "straight", "size": 6, "rise": -1, "zone": "terraces", "pickups": [{ "kind": "money", "at": 0.6, "lane": -0.4 }] },
+    { "type": "curve", "size": 2, "turn": "L", "surface": "moss" },
+    { "type": "curve", "size": 2, "turn": "R" },
+    { "type": "curve", "size": 2, "turn": "R" },
+    { "type": "curve", "size": 1, "turn": "L", "left": "crystal" },
+    { "type": "straight", "size": 2, "zone": "gate" },
+    { "type": "curve", "size": 1, "turn": "R", "zone": "gate" }
+  ]
+}

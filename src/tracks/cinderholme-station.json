@@ -1,0 +1,31 @@
+{
+  "id": "cinderholme-station",
+  "name": "Cinderholme Grand Station",
+  "biome": "victorian",
+  "cell": 20,
+  "width": 14,
+  "laps": 3,
+  "level": 4,
+  "defaultSurface": "cobble",
+  "defaultBarricade": "ironrail",
+  "pieces": [
+    { "type": "start", "size": 3, "zone": "station", "landmark": { "id": "grand-station", "side": "L", "at": 0.5, "offset": 26, "radius": 20 }, "pickups": [{ "kind": "coal", "at": 0.15, "lane": -0.6 }] },
+    { "type": "straight", "size": 6, "zone": "avenue", "pickups": [{ "kind": "money", "at": 0.7, "lane": 0.5 }] },
+    { "type": "curve", "size": 1, "turn": "R", "left": "sandbags", "right": "sandbags" },
+    { "type": "straight", "size": 3, "crest": 2.5, "surface": "flagstone", "zone": "canal" },
+    { "type": "straight", "size": 4, "zone": "market" },
+    { "type": "curve", "size": 1, "turn": "L", "left": "sandbags", "right": "sandbags" },
+    { "type": "straight", "size": 2, "zone": "market", "pickups": [{ "kind": "coal", "at": 0.5, "lane": 0.4 }] },
+    { "type": "curve", "size": 1, "turn": "R" },
+    { "type": "straight", "size": 4, "surface": "rails", "zone": "tram" },
+    { "type": "curve", "size": 2, "turn": "R" },
+    { "type": "straight", "size": 3, "rise": -1, "zone": "yard", "left": "corrugated", "right": "corrugated" },
+    { "type": "straight", "size": 8, "surface": "rails", "zone": "yard", "left": "corrugated", "right": "corrugated", "hazard": { "kind": "crossing", "at": 0.45 }, "pickups": [{ "kind": "money", "at": 0.85, "lane": -0.5 }] },
+    { "type": "straight", "size": 2, "rise": 1, "zone": "yard", "left": "corrugated", "right": "corrugated" },
+    { "type": "curve", "size": 1, "turn": "R", "left": "sandbags", "right": "sandbags" },
+    { "type": "curve", "size": 1, "turn": "R", "left": "sandbags", "right": "sandbags" },
+    { "type": "curve", "size": 1, "turn": "L" },
+    { "type": "straight", "size": 11, "zone": "terrace", "pickups": [{ "kind": "coal", "at": 0.5, "lane": 0 }] },
+    { "type": "curve", "size": 2, "turn": "R", "zone": "station" }
+  ]
+}

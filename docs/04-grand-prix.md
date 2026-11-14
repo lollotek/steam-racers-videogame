@@ -1,6 +1,6 @@
 # 04 — Grand Prix & the four worlds
 
-> Status: **v0.3** (2026-11-14) — milestone plan and world bible. **Phases A and B implemented** (notes in §9 and §10). Decisions G1–G5 and open points G6–G7 in §8.
+> Status: **v0.4** (2026-11-14) — milestone plan and world bible. **Phases A, B and C implemented** (notes in §9, §10 and §11). Decisions G1–G5 and open points G6–G7 in §8.
 > Depends on: [00 — World & Lore](00-world-lore.md), [01 — Visual direction](01-engine-visual-direction.md) §1.3, [02 — Shader spec](02-shader-style-spec.md) §12–13, [03 — Architecture](03-engine-architecture.md) §7, [gameplay.md](gameplay.md) §2.1, §9.
 > Milestone name: **M4 — Grand Prix** (M3 is the race vertical slice, already implemented).
 
@@ -53,7 +53,7 @@ Each step ends with tests (unit + headless sim where relevant) and a `testing-ch
 | B3 | **Workshop (Officina)** | Four lines: Acceleration, Top speed, Tyres, Suspension; 4 levels each, growing prices; effects mapped onto `stats.*` / `handling.*`. Valid for the season only. |
 | B4 | **Difficulty and AI growth** | Easy / Normal / Hard: AI skill, speed factor, growth per race (AI buy upgrades with their own money using the same prices), prize scale. Light catch-up for the back of the pack only (no rubber-band boost for the leader). |
 
-### Phase C — The four worlds (one track each, in Cup order)
+### Phase C — The four worlds (one track each, in Cup order) ✅ implemented (§11)
 
 Each world step contains: track layout (block chain), biome definition, surface/barricade textures, prop catalogue, one hand-built **landmark**, crowd/stands, signature hazard skin, ambient particles, LUT tuned against the world ref, phone performance check.
 
@@ -345,4 +345,30 @@ Also changed on the way:
 
 Real-phone check (2026-11-14, Realme RMX3370, `tools/phone/cup.ts`): the whole Cup flow works by touch, 43–54 fps in races 1 and 2, JS heap flat at 72 MB across races, save and resume OK. Fixed on the way: sticky main button on short screens (267 px tall with the browser bar), ≥ 44 px touch buttons, compact results table. Each Cup race shows the loading card for ~11–13 s on that phone (shader warm-up per race): to improve in D2. Details in `testing-checklist.md` (M4 phase B, Phone).
 
-Known limits: until phase C the four Cup races run on stand-in layouts (proving ground and foundry, flagged on the briefing); no menu music or sounds; the AI shopping strategy and all prices are first guesses for D1; the results freeze the running order of rivals still racing when the player continues.
+Known limits: no menu music or sounds; the AI shopping strategy and all prices are first guesses for D1; the results freeze the running order of rivals still racing when the player continues.
+
+---
+
+## 11. Phase C implementation notes (2026-11-14)
+
+The four Cup worlds, each one track (`src/tracks/<id>.json`) and one biome (`src/biomes/<id>.ts`), built from primitives and procedural textures (G6). The Cup now runs on them; the stand-in mechanism of phase B is gone.
+
+| Step | Track | Lap | Biome: what makes it recognisable |
+|---|---|---|---|
+| C1 | *Runegate Deep* (`runegate-deep`, `dwarven`) | 1048 m, flagstone + mine rails + forge grate; stone / rune pylons / riveted | Indoor dark hold with a cold key light from above and warm braziers. Regular colonnade of basalt pillars with carved forge/seal runes, ancestor-king statues on the Descent and the Ascent, conveyor gantries with glowing ore over the mine sections, magma channel under the forge grate (vent hazard), holographic rune maps, cold light shafts with dust, dwarf galleries at the start. **Rune Engine** on a three-step dais inside the hairpin: gold frame, pulsing core, turning gears. The Descent: two ramps down from the grid, one long ramp back up. |
+| C2 | *Cinderholme Grand Station* (`cinderholme-station`, `victorian`) | 1108 m, wet cobble + tram rails + paved canal bridge; iron railings / sandbags / corrugated | Overcast dusk, smog and drizzle, no runes (warm gas light only). Brick terraces with lit windows and smoking chimneys, gas lamps at a regular spacing with light pools, bunting across the road, crowd stands with the crest banner (crowned cogwheel between two hammers), canal under the humped bridge with a barge, freight wagons and signals along the railway cutting (level crossing), skyline of smokestacks, airships circling. **Grand Station**: brick hall, verdigris dome, amber clock rose window, facing the finish straight. |
+| C3 | *Rustmaw Pit* (`rustmaw-pit`, `orc`) | 1168 m, sand + scrap plates + an oil slick + the mud pit; tyres / wreck walls / hedgehogs / corrugated / barbed | Low hot sun through dust, the only open sky. Tusk arch over the start, leaning scrap towers with horns and red/toxic-green neon (clan sigil: a broken cogwheel bitten by a tusked jaw), magnet cranes swinging over the yard, furnaces with black smoke, dust devils, orcs on scrap stacks, crater rim. Two jumps (one on the main straight, a long one off the wreck ramp) and a drop into the mud pit. **Warlord idol**: a welded giant with a furnace in the chest, one tusk broken, a boiler on the back. |
+| C4 | *Lirael Canopy* (`lirael-canopy`, `elven`) | 1245 m, heartwood + moss + stone path + a stream ford; roots / crystal / earth | Cold rain and mist, strongest bloom. Giant trees with glowing canopies and tree-lungs breathing steam, silverwood towers, rune banners flowing cyan and green, archer and mage statues, glowing mushrooms, crystal lamps with light pools, walkways between trunks, spores, snowy mountains far away. Sap streams on the avenue and around the Mother Tree; canopy climb and one jump over a mist gap. **Mother Tree** inside the long climbing curve, with the mage carved in its trunk. |
+
+Shared pieces added on the way (`npm run check:tracks` prints the rules report of every track):
+
+- **Track rules as code** (`src/track/rules.ts`, `tools/track/check.ts`): lap length, longest straight, hairpins, surfaces, barricade types, hazard, landmark, elevation and crates (§4). Unit test `tests/unit/cup-tracks.test.ts`: the four tracks follow the rules and two AI finish a lap on each with no repositions.
+- **Biome definition** grows `props` (own dressing kit mixed by the themes, `Theme.own`), `theme` (fallback for barricades a biome does not list, so the foundry kit never leaks into other worlds), `debris`, `skirt`, `rain`, `clearView`, and an `animate` hook in the world context (gears, airships, banners, cranes). Helpers for hand-placed set pieces in `src/biomes/common.ts` (instanced batching, placement along the track and by zone, crowds, glow pools, painted textures).
+- **The camera never loses the road** (`kit.viewHeightLimit`): the board camera has a fixed azimuth, so a tall prop between the camera and the road hides it. Hand-placed set pieces and tall dressing props (`PropDef.height`, biomes with `clearView`) are cut to the sight line on the camera side of the road and keep their full height behind it (stumps of pillars, low terraces, young trees). The crane hazard tower stands on the far side of the road.
+- **World tunables reset per race**: the palette, light, fog, grade and wind keys go back to their defaults before a biome applies its own, so a race never inherits the previous world's look.
+- New particles `ember` and `spore` (HDR, they bloom); GPU rain streaks around the camera (`RainField`, medium tier and up); brick and bark textures.
+- The sap stream skin follows the curve of the road (it was a straight strip, §9 known limits).
+
+Headless check (`tools/sim/run.ts`, 4 AI, 2 laps, seeds 1–2): no stuck cars, no repositions; laps 57–63 s (Runegate), 51–57 s (Cinderholme), 51–60 s (Rustmaw), 54–58 s (Lirael) with no upgrades. In the browser (desktop, high tier) the worlds build 3.6k–5k dressing instances in 14–43 instanced meshes, with warm-up of 2–4.5 s; the foundry is unchanged (3356 instances).
+
+Known limits: the phone performance check of the four worlds is still to do (the device was offline); hazard skins other than the stream are the phase A ones (vent, crossing, crane fit their worlds but are simple); no crowd animation; lap times sit at the low end of the §4 target with no upgrades, to balance in D1 together with the season runner.

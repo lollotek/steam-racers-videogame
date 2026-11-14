@@ -15,12 +15,11 @@ export type VehicleId = 'hotrod' | 'tank';
 export const VEHICLE_IDS: readonly VehicleId[] = ['hotrod', 'tank'];
 export const VEHICLE_NAMES: Record<VehicleId, string> = { hotrod: 'Hot Rod', tank: 'Steam Tank' };
 
-/** One leg of the Cup. `trackId` is the final track; `placeholder` runs until it exists (phase C). */
+/** One leg of the Cup: one world, one track (doc 04 §7). */
 export interface CupRound {
   world: string;
   track: string;
   trackId: string;
-  placeholder: string;
   hazard: string;
   blurb: string;
 }
@@ -33,7 +32,6 @@ export const CUP_ROUNDS: readonly CupRound[] = [
     world: 'Dwarven deep-hall',
     track: 'Runegate Deep',
     trackId: 'runegate-deep',
-    placeholder: 'proving-ground',
     hazard: 'Forge vents: a grate glows, then a fire column. 1 PF, +1 PV.',
     blurb: 'The Descent: carved pillars, brass pipes and the Rune Engine. Technical, medium speed.',
   },
@@ -41,7 +39,6 @@ export const CUP_ROUNDS: readonly CupRound[] = [
     world: 'Victorian industrial city',
     track: 'Cinderholme Grand Station',
     trackId: 'cinderholme-station',
-    placeholder: 'foundry-01',
     hazard: 'Level crossing: bells, barriers, then a freight train. Crash and 3 PF.',
     blurb: 'A street circuit of brick, cast iron and gas light. Wet cobbles, 90° corners.',
   },
@@ -49,7 +46,6 @@ export const CUP_ROUNDS: readonly CupRound[] = [
     world: 'Orc scrapyard',
     track: 'Rustmaw Pit',
     trackId: 'rustmaw-pit',
-    placeholder: 'proving-ground',
     hazard: 'Magnet crane: the shadow grows, a scrap block drops. 4 PF, then a wall.',
     blurb: 'Wide and rough through the scrap mountains, under the Warlord idol. Hard edges.',
   },
@@ -57,7 +53,6 @@ export const CUP_ROUNDS: readonly CupRound[] = [
     world: 'Elven village',
     track: 'Lirael Canopy',
     trackId: 'lirael-canopy',
-    placeholder: 'foundry-01',
     hazard: 'Sap streams: ride the lit lanes for steam; between pulses they are slippery.',
     blurb: 'The finale on the canopy level: long flowing curves in the rain.',
   },
@@ -276,11 +271,6 @@ function shuffled(n: number, seed: number): number[] {
     [a[i], a[j]] = [a[j]!, a[i]!];
   }
   return a;
-}
-
-/** Track id for a round: the final track when it exists, else its placeholder. */
-export function roundTrackId(round: CupRound, available: (id: string) => boolean): string {
-  return available(round.trackId) ? round.trackId : round.placeholder;
 }
 
 /** Driving setup of a season racer for the next race. */

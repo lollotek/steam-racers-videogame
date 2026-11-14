@@ -37,7 +37,7 @@ import { buildDressing, type Reserved } from '../game/dressing';
 import { sampleAt, type CompiledTrack } from '../track/compile';
 import { JUMP, type Surface } from '../track/track-format';
 import type { BiomeDef, SurfaceLook, WorldContext } from './biome';
-import { checkerTexture, ink, lavaMaterial, ribbonFromSamples, skirtFromSamples, textTexture } from './kit';
+import { RainField, checkerTexture, ink, lavaMaterial, ribbonFromSamples, skirtFromSamples, textTexture, viewHeightLimit } from './kit';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type N = any;
@@ -143,9 +143,16 @@ function makeHeightField(track: CompiledTrack): { heightAt(x: number, z: number)
   return { heightAt, grid: { x0, z0, step, nx, nz, h } };
 }
 
-export function buildWorld(biome: BiomeDef, tex: ProceduralSet, seed: number, track: CompiledTrack): GameWorld {
+/**
+ * Tunables a biome may set (palette, light, fog, grade, wind). They go back to their defaults
+ * before every world is built, so a race in one world never inherits the look of the previous one.
+ */
+const WORLD_KEYS = /^(light\.|fog\.|ink\.(color|litTint|shadowColor|wrap|bands|bandSoftness|hatchStrength)$|post\.(exposure|contrast|saturation|lift|gain|vignette|grain|paper|bloomStrength|bloomThreshold|bloomRadius)$|fx\.wind$)/;
+
+export function buildWorld(biome: BiomeDef, tex: ProceduralSet, seed: number, track: CompiledTrack, opts: { rain?: boolean } = {}): GameWorld {
   // Palette, light, fog and grade of the biome (doc 02 §12 per world) go through the tunables,
   // so the debug panel shows and edits the values actually in use.
+  for (const t of tunables.all()) if (WORLD_KEYS.test(t.def.key)) tunables.reset(t.def.key);
   tunables.applyPreset(biome.tunables);
   const rng = new Rng(seed);
   const scene = new Scene();
@@ -237,7 +244,8 @@ export function buildWorld(biome: BiomeDef, tex: ProceduralSet, seed: number, tr
   let runStart = 0;
   while (runStart < n && runKey(runStart) === runKey((runStart - 1 + n) % n)) runStart++;
   if (runStart >= n) runStart = 0;
-  const skirtMat = ink({ map: tex.iron, mapping: 'world', mapScale: 0.2, color: '#9A8E84' });
+  const sk = biome.skirt;
+  const skirtMat = ink({ map: tex[sk?.tex ?? 'iron'], mapping: 'world', mapScale: sk?.scale ?? 0.2, color: sk?.tint ?? '#9A8E84', sheen: sk?.sheen });
   skirtMat.side = DoubleSide;
   for (let k = 0; k < n; ) {
     const i0 = (runStart + k) % n;
@@ -340,7 +348,8 @@ export function buildWorld(biome: BiomeDef, tex: ProceduralSet, seed: number, tr
     }
     return null; // no clear spot: skip the prop rather than dropping it on the road
   };
-  const ctx: WorldContext = { scene, track, curve, tex, rng, seed, reserved, emitters, localLights, heightAt, distToTrack, beside, place, ink };
+  const animations: ((dt: number, time: number) => void)[] = [];
+  const ctx: WorldContext = { scene, track, curve, tex, rng, seed, reserved, emitters, localLights, heightAt, distToTrack, beside, place, ink, animate: (fn) => animations.push(fn) };
 
   // Landmark slots: reserved, built by the biome or a generic plinth (doc 04 A2).
   for (const lm of track.landmarks) {
@@ -372,12 +381,15 @@ export function buildWorld(biome: BiomeDef, tex: ProceduralSet, seed: number, tr
     }
     return left ? best.left : best.right;
   };
-  const dressing = buildDressing(scene, curve, track.halfWidth, tex, seed, reserved, barricadeAt, { heightAt, themes: biome.themes });
+  const dressing = buildDressing(scene, curve, track.halfWidth, tex, seed, reserved, barricadeAt, { heightAt, themes: biome.themes, theme: biome.theme, props: biome.props?.bind(biome), debris: biome.debris,
+    heightLimit: biome.clearView ? (x, z, inset) => viewHeightLimit(track, x, z, inset, tunables.get<number>('camera.board.azimuth'), tunables.get<number>('camera.board.pitch')) : undefined });
   emitters.push(...dressing.emitters);
   console.info(`[world] ${biome.id}: dressing ${dressing.instances} instances in ${dressing.instancedMeshes} instanced meshes`);
 
   syncLights();
 
+  const rain = biome.rain && opts.rain !== false ? new RainField(scene, biome.rain) : null;
+  let clock = 0;
   const keyDir = new Vector3();
   return {
     biome,
@@ -391,7 +403,10 @@ export function buildWorld(biome: BiomeDef, tex: ProceduralSet, seed: number, tr
     dispose() {
       for (const off of offs) off();
     },
-    update(_dt, focus) {
+    update(dt, focus) {
+      clock += dt;
+      for (const a of animations) a(dt, clock);
+      rain?.update(focus);
       // Shadow camera follows the view focus (doc 02 §3.3: single shadow map fitted to the camera).
       const pitch = (tunables.get('light.keyPitch') * Math.PI) / 180;
       const yaw = (tunables.get('light.keyYaw') * Math.PI) / 180;

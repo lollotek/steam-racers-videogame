@@ -11,10 +11,10 @@ import type { EmitterOptions } from '../render/fx/particles';
 import type { InkLitMaterial } from '../render/ink/ink-material';
 import type { CompiledLandmark, CompiledTrack } from '../track/compile';
 import type { Barricade, Surface } from '../track/track-format';
-import type { Reserved, Theme } from '../game/dressing';
+import type { PropDef, PropKit, Reserved, Theme } from '../game/dressing';
 
 /** Procedural textures a surface may use. */
-export type TexKey = 'plates' | 'grate' | 'dirt' | 'iron' | 'rust' | 'brass' | 'flagstone' | 'cobble' | 'planks' | 'rails';
+export type TexKey = 'plates' | 'grate' | 'dirt' | 'iron' | 'rust' | 'brass' | 'flagstone' | 'cobble' | 'planks' | 'rails' | 'brick' | 'bark';
 
 export interface SurfaceLook {
   tex: TexKey;
@@ -36,6 +36,18 @@ export interface BiomeDef {
   surfaces?: Partial<Record<Surface, SurfaceLook>>;
   /** Dressing themes per barricade (what is built behind each edge type). */
   themes?: Partial<Record<Barricade, Theme>>;
+  /** Theme for every barricade not in `themes` (keeps the foundry kit out of other worlds). */
+  theme?: Theme;
+  /** The biome's own dressing props, mixed with the generic kit by the themes. */
+  props?(kit: PropKit): PropDef[];
+  /** Ground debris (default: foundry plates). */
+  debris?: { color: string; scale?: number };
+  /** Sides of elevated roads and jump pits (default: riveted iron). */
+  skirt?: SurfaceLook;
+  /** Keep tall dressing out of the board camera's view of the road (see kit.viewHeightLimit). */
+  clearView?: boolean;
+  /** Rain streaks around the camera (medium tier and up). */
+  rain?: { color: string; count: number; speed: number };
   /** Start gantry banner. */
   gantry: { lines: string[]; bg: string; fg: string };
   /** Floor of the jump pits. */
@@ -69,6 +81,8 @@ export interface WorldContext {
    * spots keep the same clearance from every part of the track; null when there is no clear spot.
    */
   beside(t: number, off: number, extra?: number): { p: Vector3; yaw: number } | null;
+  /** Called every frame with the frame time and the world clock (gears, airships, banners). */
+  animate(fn: (dt: number, time: number) => void): void;
   /** Add to the scene at (x, ground, z) with shadows on meshes only. */
   place(o: Object3D, x: number, z: number, ry?: number): Object3D;
   ink(p: ConstructorParameters<typeof InkLitMaterial>[0]): InkLitMaterial;

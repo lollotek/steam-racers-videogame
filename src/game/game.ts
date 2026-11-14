@@ -230,7 +230,8 @@ export class Game {
     SharedTex.paper = this.tex.paper;
 
     this.trackFile = this.setup.track;
-    this.world = buildWorld(getBiome(this.trackFile.biome), this.tex, flags.seed, compileTrack(this.trackFile));
+    // Rain is drawn from the medium tier up (doc 04 D2: weather drops first).
+    this.world = buildWorld(getBiome(this.trackFile.biome), this.tex, flags.seed, compileTrack(this.trackFile), { rain: opts.tier !== 'low' });
     this.scene = this.world.scene;
     this.particles = new ParticleSystem(this.scene, this.tex.puff, flags.seed + 99);
     for (const e of this.world.emitters) this.particles.addEmitter(e);

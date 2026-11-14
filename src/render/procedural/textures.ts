@@ -446,6 +446,9 @@ export interface ProceduralSet {
   cobble: Texture;
   planks: Texture;
   rails: Texture;
+  /** Phase C worlds (doc 04 §7): Victorian brick walls, elven bark (both neutral, tinted per material). */
+  brick: Texture;
+  bark: Texture;
 }
 
 /**
@@ -564,6 +567,66 @@ export function makeRails(seed: number, size = 512): Texture {
   return toTexture(c, true);
 }
 
+/** Brick courses with mortar and soot streaks; warm neutral, tinted per wall (doc 04 §7.2). */
+export function makeBricks(seed: number, size = 512): Texture {
+  const rng = new Rng(seed);
+  const [c, ctx] = canvas(size);
+  ctx.fillStyle = '#4A403A';
+  ctx.fillRect(0, 0, size, size);
+  const rows = 16;
+  const h = size / rows;
+  const w = size / 4;
+  for (let r = 0; r < rows; r++) {
+    const off = r % 2 ? w / 2 : 0;
+    for (let k = -1; k < 5; k++) {
+      const x = k * w + off;
+      ctx.fillStyle = rng.pick(['#9A6A58', '#8E5E4C', '#A47460', '#865848', '#946452']);
+      ctx.fillRect(x + 2, r * h + 2, w - 4, h - 4);
+    }
+  }
+  ctx.strokeStyle = hexA(INK, 0.5);
+  ctx.lineWidth = 2;
+  for (let r = 0; r <= rows; r++) {
+    ctx.beginPath();
+    ctx.moveTo(0, r * h);
+    ctx.lineTo(size, r * h);
+    ctx.stroke();
+  }
+  // Soot running down from the top.
+  for (let i = 0; i < 14; i++) {
+    const x = rng.range(0, size);
+    const g = ctx.createLinearGradient(0, 0, 0, size * rng.range(0.3, 0.9));
+    g.addColorStop(0, 'rgba(26,19,16,0.45)');
+    g.addColorStop(1, 'rgba(26,19,16,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x, 0, rng.range(10, 40), size);
+  }
+  return toTexture(c, true);
+}
+
+/** Vertical bark ridges for the elven trunks (doc 04 §7.4): grey-brown, tinted per material. */
+export function makeBark(seed: number, size = 512): Texture {
+  const rng = new Rng(seed);
+  const [c, ctx] = canvas(size);
+  ctx.fillStyle = '#6E6A62';
+  ctx.fillRect(0, 0, size, size);
+  for (let i = 0; i < 70; i++) {
+    const x = rng.range(0, size);
+    ctx.strokeStyle = hexA(INK, rng.range(0.25, 0.6));
+    ctx.lineWidth = rng.range(2, 6);
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    let xx = x;
+    for (let y = 0; y <= size; y += size / 8) {
+      xx += rng.range(-10, 10);
+      ctx.lineTo(xx, y);
+    }
+    ctx.stroke();
+  }
+  blotches(ctx, rng, size, 24, ['#5A6A58', '#8A8478'], 20, 80, [0.15, 0.35]);
+  return toTexture(c, true);
+}
+
 export function makeProceduralSet(seed: number): ProceduralSet {
   return {
     tam: makeTAM(seed),
@@ -581,5 +644,7 @@ export function makeProceduralSet(seed: number): ProceduralSet {
     cobble: makeStones(seed + 12, 9),
     planks: makePlanks(seed + 13),
     rails: makeRails(seed + 14),
+    brick: makeBricks(seed + 15),
+    bark: makeBark(seed + 16),
   };
 }

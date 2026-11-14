@@ -197,7 +197,6 @@ export function BriefingScreen({ actions }: { actions: FlowActions }) {
   useMenuNav(root, () => actions.toTitle());
   if (!s) return null;
   const round = CUP_ROUNDS[s.round]!;
-  const placeholder = !actions.tracks.some((t) => t.id === round.trackId);
   const grid = gridFor(s);
   const order = s.racers.map((_, i) => i).sort((a, b) => grid[a]! - grid[b]!);
   return (
@@ -212,7 +211,6 @@ export function BriefingScreen({ actions }: { actions: FlowActions }) {
         <p class="hazard">
           <b>Hazard</b> {round.hazard}
         </p>
-        {placeholder && <p class="dim">Track under construction: this race runs on a stand-in layout.</p>}
         <div class="grid-list">
           <span class="dim">{s.round === 0 ? 'Grid (draw)' : 'Grid (Cup standings, leader on pole)'}</span>
           <ol>

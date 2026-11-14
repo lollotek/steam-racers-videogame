@@ -18,7 +18,8 @@ import { U } from '../ink/ink-uniforms';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type N = any;
 
-export type ParticleKind = 'steam' | 'smoke' | 'dust';
+/** `ember` and `spore` are glowing (HDR, they bloom): forge sparks, elven spores and fireflies. */
+export type ParticleKind = 'steam' | 'smoke' | 'dust' | 'ember' | 'spore';
 
 export interface EmitterOptions {
   kind: ParticleKind;
@@ -46,7 +47,7 @@ tunables.registerGroup('fx', [
 ]);
 
 const MAX = 8000;
-const KIND_ID: Record<ParticleKind, number> = { steam: 0, smoke: 1, dust: 2 };
+const KIND_ID: Record<ParticleKind, number> = { steam: 0, smoke: 1, dust: 2, ember: 3, spore: 4 };
 
 export class ParticleSystem {
   readonly sprite: Sprite;
@@ -87,7 +88,10 @@ export class ParticleSystem {
     const smoke: N = mix(U.inkColor, vec3(0.16, 0.13, 0.11), tex.rgb);
     const dust: N = tex.rgb.mul(vec3(0.55, 0.45, 0.35));
     const kindN: N = data.w;
-    const rgb: N = kindN.lessThan(0.5).select(steam, kindN.lessThan(1.5).select(smoke, dust));
+    // Glowing kinds: a hot core from the puff alpha, values above 1 so the bloom picks them up.
+    const ember: N = vec3(4.0, 1.4, 0.35).mul(tex.a.mul(tex.a));
+    const spore: N = vec3(0.7, 2.6, 2.3).mul(tex.a.mul(tex.a));
+    const rgb: N = kindN.lessThan(0.5).select(steam, kindN.lessThan(1.5).select(smoke, kindN.lessThan(2.5).select(dust, kindN.lessThan(3.5).select(ember, spore))));
     mat.colorNode = vec4(rgb, tex.a.mul(data.y));
     // Leave normal/meta untouched: alpha 0 with normal blending keeps the destination (doc 02 §2).
     // The scene pass MRT uses material blending for these attachments (see render/pipeline.ts).
@@ -187,7 +191,7 @@ export class ParticleSystem {
       const t = this.age[i]! / this.life[i]!;
       const fadeIn = Math.min(1, t * 6);
       const fadeOut = 1 - t * t;
-      const op = this.kind[i] === 1 ? opSmoke : this.kind[i] === 0 ? opSteam : 0.5;
+      const op = this.kind[i] === 1 ? opSmoke : this.kind[i] === 0 ? opSteam : this.kind[i]! >= 3 ? 0.9 : 0.5;
       pa[k * 3] = this.px[i]!;
       pa[k * 3 + 1] = this.py[i]!;
       pa[k * 3 + 2] = this.pz[i]!;

@@ -4,21 +4,25 @@
  */
 import {
   AdditiveBlending,
+  BoxGeometry,
   BufferGeometry,
   CanvasTexture,
   Color,
   Float32BufferAttribute,
+  InstancedBufferAttribute,
+  InstancedMesh,
   Mesh,
   MeshBasicNodeMaterial,
   PlaneGeometry,
   SRGBColorSpace,
-  type InstancedMesh,
+  Vector3,
   type Material,
   type Object3D,
   type Texture,
 } from 'three/webgpu';
-import { float, mix, smoothstep, texture, time, uv, vec2, vec3, vec4 } from 'three/tsl';
+import { float, fract, instancedBufferAttribute, mix, mrt, positionLocal, smoothstep, texture, time, uniform, uv, vec2, vec3, vec4 } from 'three/tsl';
 import { InkLitMaterial } from '../render/ink/ink-material';
+import { Rng } from '../core/rng';
 import type { CompiledTrack } from '../track/compile';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -246,4 +250,72 @@ export function disposeScene(scene: Object3D, keep: Set<unknown>): void {
     mat.dispose();
   }
   scene.clear();
+}
+
+/**
+ * Tallest a prop at (x, z) may be without hiding the road from the board camera (fixed azimuth and
+ * pitch, follow-camera.ts): unlimited behind the road (away from the camera), otherwise the height
+ * of the sight line over the gap between the prop's front (`inset` metres towards the road) and
+ * the road edge. Props beside the road get a looser limit. Uses the nearest centre-line sample.
+ */
+export function viewHeightLimit(track: CompiledTrack, x: number, z: number, inset = 0, azimuthDeg = 35, pitchDeg = 47): number {
+  let s = track.samples[0]!;
+  let bd = Infinity;
+  for (const q of track.samples) {
+    const d = (q.x - x) ** 2 + (q.z - z) ** 2;
+    if (d < bd) {
+      bd = d;
+      s = q;
+    }
+  }
+  const ox = x - s.x;
+  const oz = z - s.z;
+  const d = Math.hypot(ox, oz);
+  if (d < 1e-3) return 0;
+  const az = (azimuthDeg * Math.PI) / 180;
+  const along = (ox * Math.sin(az) + oz * Math.cos(az)) / d; // +1 = straight behind the road
+  if (along > 0.15) return Infinity;
+  const gap = Math.max(0, d - inset - track.halfWidth);
+  return (gap * Math.tan((pitchDeg * Math.PI) / 180)) / Math.max(0.35, -along);
+}
+
+/**
+ * Rain streaks in a box around the camera focus (doc 04 §7.2 drizzle, §7.4 rain). Positions are
+ * computed on the GPU from a per-drop offset and the clock, wrapped in world space so the drops do
+ * not move with the camera. No outlines (normal/meta untouched), no shadows.
+ */
+export class RainField {
+  readonly mesh: InstancedMesh;
+  private readonly focus = uniform(new Vector3());
+  static readonly SIZE = 70;
+  static readonly HEIGHT = 34;
+
+  constructor(scene: { add(o: Object3D): unknown }, o: { color: string; count: number; speed: number }) {
+    const geo = new BoxGeometry(0.03, 1.4, 0.03);
+    const offsets = new Float32Array(o.count * 3);
+    const rng = new Rng(4242);
+    for (let i = 0; i < offsets.length; i++) offsets[i] = rng.next();
+    const off: N = instancedBufferAttribute(new InstancedBufferAttribute(offsets, 3));
+    const mat = new MeshBasicNodeMaterial({ transparent: true, depthWrite: false });
+    const S = RainField.SIZE;
+    const H = RainField.HEIGHT;
+    const f: N = this.focus;
+    const wrap = (o: N, c: N, size: number) => fract(o.sub(c.div(size))).sub(0.5).mul(size).add(c);
+    const x: N = wrap(off.x, f.x, S);
+    const z: N = wrap(off.z, f.z, S);
+    const y: N = fract(off.y.sub(time.mul(o.speed / H))).mul(H).add(f.y).sub(4);
+    // Slight slant with the wind.
+    mat.positionNode = positionLocal.add(vec3(x.add(positionLocal.y.mul(0.12)), y, z)) as N;
+    mat.colorNode = vec4(new Color(o.color), float(0.35)) as N;
+    (mat as N).mrtNode = mrt({ normal: vec4(0, 0, 0, 0), meta: vec4(0, 0, 0, 0) });
+    (mat as N).fog = false;
+    this.mesh = new InstancedMesh(geo, mat, o.count);
+    this.mesh.frustumCulled = false;
+    this.mesh.renderOrder = 9;
+    scene.add(this.mesh);
+  }
+
+  update(focus: Vector3): void {
+    this.focus.value.copy(focus);
+  }
 }

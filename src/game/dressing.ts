@@ -51,21 +51,23 @@ export interface Reserved {
   r: number;
 }
 
-interface Part {
+export interface Part {
   geo: BufferGeometry;
   mat: Material;
   m: Matrix4;
   shadow?: boolean;
 }
 
-type Band = 'edge' | 'mid' | 'far';
+export type Band = 'edge' | 'mid' | 'far';
 
-interface PropDef {
+export interface PropDef {
   name: string;
   radius: number;
   bands: Band[];
   weight: number;
   build(rng: Rng): Part[];
+  /** Tallest point (m): skipped where it would hide the road from the camera (`heightLimit`). */
+  height?: number;
   /** Optional smoke/steam emitter at a local point. */
   emitter?: (rng: Rng) => { local: Vector3; opts: Omit<EmitterOptions, 'position'> };
   /** Additive glow pool (color, radius). */
@@ -74,12 +76,13 @@ interface PropDef {
 
 /**
  * What lies beyond each barricade type: the edge of a piece decides its whole surroundings
- * (gameplay.md §6.3, doc 03 §7.3). `mul` multiplies prop weights (`other` for the rest),
- * `density` thins every band.
+ * (gameplay.md §6.3, doc 03 §7.3). `mul` multiplies prop weights (`other` for the generic kit,
+ * `own` for the props of the biome, default 1), `density` thins every band.
  */
 export interface Theme {
   density: number;
   other: number;
+  own?: number;
   mul: Record<string, number>;
 }
 
@@ -104,11 +107,22 @@ const THEME_FALLBACK: Record<Barricade, Barricade> = {
   stone: 'riveted', runepylon: 'riveted', ironrail: 'corrugated', wreckwall: 'hedgehog', tyres: 'hedgehog', roots: 'earth', crystal: 'earth',
 };
 
+/** What a biome gets to build its own props (doc 04 §3 C): the shared materials and shapes. */
+export type PropKit = ReturnType<typeof makeKit> & { tex: ProceduralSet; M: typeof M; ink: (p: ConstructorParameters<typeof InkLitMaterial>[0]) => InkLitMaterial };
+
 export interface DressingOptions {
   /** Ground height under a point (elevated tracks, doc 04 A5). Default: flat at 0. */
   heightAt?: (x: number, z: number) => number;
   /** Biome themes per barricade (override the defaults). */
   themes?: Partial<Record<Barricade, Theme>>;
+  /** Theme for barricades the biome does not list (instead of the foundry defaults). */
+  theme?: Theme;
+  /** Biome props, added to the generic kit (weighted by `Theme.own`). */
+  props?: (kit: PropKit) => PropDef[];
+  /** Height a prop may reach at a spot without hiding the road from the camera (default: no limit). */
+  heightLimit?: (x: number, z: number, inset: number) => number;
+  /** Ground debris colour and count scale (default: foundry plates). */
+  debris?: { color: string; scale?: number };
 }
 
 export interface DressingResult {
@@ -117,10 +131,10 @@ export interface DressingResult {
   instances: number;
 }
 
-const M = (x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, sx = 1, sy = sx, sz = sx) =>
+export const M = (x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0, sx = 1, sy = sx, sz = sx) =>
   new Matrix4().compose(new Vector3(x, y, z), new Quaternion().setFromEuler(new Euler(rx, ry, rz)), new Vector3(sx, sy, sz));
 
-function gearGeometry(radius: number, teeth: number, thickness: number): BufferGeometry {
+export function gearGeometry(radius: number, teeth: number, thickness: number): BufferGeometry {
   const parts: BufferGeometry[] = [new CylinderGeometry(radius, radius, thickness, 24)];
   const tooth = new BoxGeometry(radius * 0.28, thickness, radius * 0.3);
   for (let i = 0; i < teeth; i++) {
@@ -189,9 +203,10 @@ export function buildDressing(
   opts: DressingOptions = {},
 ): DressingResult {
   const heightAt = opts.heightAt ?? (() => 0);
-  const themeOf = (b: Barricade): Theme => opts.themes?.[b] ?? THEMES[b] ?? opts.themes?.[THEME_FALLBACK[b]] ?? THEMES[THEME_FALLBACK[b]]!;
+  const themeOf = (b: Barricade): Theme => opts.themes?.[b] ?? opts.theme ?? THEMES[b] ?? THEMES[THEME_FALLBACK[b]]!;
   const rng = new Rng(seed * 7919 + 13);
-  const { mats, g } = makeKit(tex);
+  const kit = makeKit(tex);
+  const { mats, g } = kit;
 
   const props: PropDef[] = [
     // ---- edge band -----------------------------------------------------------
@@ -329,7 +344,7 @@ export function buildDressing(
       { geo: g.box, mat: mats.dark, m: M(0, 0.4, 0.6, 0, 0, 0, 1.2, 0.8, 0.8) },
     ] },
     // ---- far band -------------------------------------------------------------
-    { name: 'tank', radius: 6, bands: ['far'], weight: 3, build: (r) => {
+    { name: 'tank', radius: 6, bands: ['far'], weight: 3, height: 13, build: (r) => {
       const h = r.range(7, 12);
       return [
         { geo: g.cyl, mat: mats.iron, m: M(0, h / 2, 0, 0, 0, 0, 5, h, 5) },
@@ -339,12 +354,12 @@ export function buildDressing(
         { geo: g.box, mat: mats.dark, m: M(0, h / 2, 5.05, 0, 0, 0, 0.6, h, 0.2) },
       ];
     } },
-    { name: 'chimney', radius: 3, bands: ['far'], weight: 2, emitter: () => ({ local: new Vector3(0, 27, 0), opts: { kind: 'smoke', rate: 4, velocity: { x: 0, y: 3, z: 0 }, spread: 0.9, life: [4, 7], size: [3, 10] } }), build: () => [
+    { name: 'chimney', radius: 3, bands: ['far'], weight: 2, height: 27, emitter: () => ({ local: new Vector3(0, 27, 0), opts: { kind: 'smoke', rate: 4, velocity: { x: 0, y: 3, z: 0 }, spread: 0.9, life: [4, 7], size: [3, 10] } }), build: () => [
       { geo: g.cyl, mat: mats.rust, m: M(0, 13, 0, 0, 0, 0, 1.8, 26, 1.8) },
       { geo: g.cyl, mat: mats.dark, m: M(0, 26.2, 0, 0, 0, 0, 2.1, 0.8, 2.1) },
       { geo: g.box, mat: mats.iron, m: M(0, 1.5, 0, 0, 0, 0, 5, 3, 5) },
     ] },
-    { name: 'tower', radius: 4, bands: ['far'], weight: 2, build: (r) => {
+    { name: 'tower', radius: 4, bands: ['far'], weight: 2, height: 21, build: (r) => {
       const h = r.range(12, 20);
       const parts: Part[] = [];
       for (const [x, z] of [[-2, -2], [2, -2], [-2, 2], [2, 2]]) parts.push({ geo: g.box, mat: mats.iron, m: M(x, h / 2, z, 0, 0, 0, 0.4, h, 0.4) });
@@ -359,6 +374,11 @@ export function buildDressing(
       return parts;
     } },
   ];
+  const own = new Set<string>();
+  for (const p of opts.props?.({ ...kit, tex, M, ink: (q) => new InkLitMaterial(q) }) ?? []) {
+    own.add(p.name);
+    props.push(p);
+  }
 
   function scrap(r: Rng, n: number, spread: number): Part[] {
     const parts: Part[] = [];
@@ -410,15 +430,18 @@ export function buildDressing(
         // The barricade on this side of the piece decides what is built behind it.
         const theme = themeOf(barricadeAt(p.x, p.z, side > 0));
         if (rng.next() > 0.85 * theme.density) continue; // leave gaps
-        const weightOf = (d: PropDef) => d.weight * (theme.mul[d.name] ?? theme.other);
-        let pick = rng.next() * candidates.reduce((s, d) => s + weightOf(d), 0);
-        const def = candidates.find((d) => (pick -= weightOf(d)) < 0) ?? candidates[0]!;
+        const weightOf = (d: PropDef) => d.weight * (theme.mul[d.name] ?? (own.has(d.name) ? (theme.own ?? 1) : theme.other));
+        const total = candidates.reduce((s, d) => s + weightOf(d), 0);
+        if (total <= 0) continue;
+        let pick = rng.next() * total;
+        const def = candidates.find((d) => (pick -= weightOf(d)) < 0) ?? candidates.find((d) => weightOf(d) > 0)!;
         const left = new Vector3().crossVectors(up, curve.getTangentAt(t)).normalize();
         const off = side * rng.range(band.min + def.radius, band.max);
         const x = p.x + left.x * off;
         const z = p.z + left.z * off;
         if (distToTrack(x, z) < halfWidth + 1.2 + def.radius) continue; // never on the road (curves fold the bands)
         if (!free(x, z, def.radius)) continue;
+        if (def.height && opts.heightLimit && def.height > opts.heightLimit(x, z, def.radius)) continue;
         placed.push({ x, z, r: def.radius });
         const yaw = bandName === 'edge' ? Math.atan2(left.x, left.z) + rng.range(-0.3, 0.3) : rng.range(0, Math.PI * 2);
         const world = new Matrix4().compose(new Vector3(x, heightAt(x, z), z), new Quaternion().setFromAxisAngle(up, yaw), new Vector3(1, 1, 1));
@@ -442,7 +465,7 @@ export function buildDressing(
   }
 
   // Ground debris: small plates and bolts scattered near the track (instanced, no outlines).
-  const debrisCount = tunables.get('dressing.debris');
+  const debrisCount = Math.round(tunables.get('dressing.debris') * (opts.debris?.scale ?? 1));
   const debris: Matrix4[] = [];
   for (let i = 0; i < debrisCount; i++) {
     const t = rng.next();
@@ -454,7 +477,7 @@ export function buildDressing(
     const s = rng.range(0.15, 0.6);
     debris.push(M(x, heightAt(x, z) + 0.03, z, 0, rng.range(0, 6), 0, s, 1, s * rng.range(0.4, 1.2)));
   }
-  batches.set('debris', { geo: g.plate, mat: mats.debris, list: debris, shadow: false });
+  batches.set('debris', { geo: g.plate, mat: opts.debris ? new InkLitMaterial({ color: opts.debris.color, lineWeight: 0 }) : mats.debris, list: debris, shadow: false });
 
   let instances = 0;
   for (const b of batches.values()) {

@@ -27,7 +27,6 @@ import {
   racerTune,
   randomGrid,
   reportFor,
-  roundTrackId,
   saveSeason,
   toBriefing,
   tuneFor,
@@ -164,7 +163,7 @@ export class Flow implements FlowActions {
     const s = this.season;
     if (!s || s.stage !== 'briefing') return;
     const round = CUP_ROUNDS[s.round]!;
-    const file = this.laps(getTrack(roundTrackId(round, (id) => id in TRACKS)));
+    const file = this.laps(getTrack(round.trackId));
     const d = DIFFICULTY[s.difficulty];
     const entrants: Entrant[] = s.racers.map((r, i) => ({
       name: r.name,

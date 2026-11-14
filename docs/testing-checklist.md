@@ -188,3 +188,22 @@ Automated: `npm run test:phone:cup -- --adb … --serial IP:PORT` taps through t
 | Players step | not shown on the phone (split screen is PC only) ✓ |
 | **Found and fixed** | at 267 px height the main button (Start race, Continue, Next race) was below the fold on briefing, results, standings and workshop; workshop Buy buttons were 33 px tall; the results table wrapped "best" and "PF" on two lines. Now: the action row is sticky at the bottom of the card, touch buttons are ≥ 44 px, best lap and PF columns are hidden on short screens. Re-run: no layout issues. |
 | Still open | ~11–13 s loading card before every Cup race on this phone (whole-world shader warm-up per race); worth a progress bar or a shared shader cache in phase D2 |
+
+## M4 phase C — The four worlds
+
+Goal (doc 04 §3 C, §11): each Cup world recognisable in one screenshot, raceable, readable. Open a world directly with `?quick&track=<id>` or play the Cup from the title.
+
+### PC
+
+- [ ] `?quick&track=runegate-deep`: dark stone hold, cold light from above, braziers, colonnade, rune pylons (cyan arcs), ore carts; the road (light flagstones) reads against the rock floor. Forge grate bridge over the magma channel: the vent glows, then fire. Rune Engine (magenta core, gears) inside the hairpin. Two ramps down, a long ramp back up.
+- [ ] `?quick&track=cinderholme-station`: wet cobbles, drizzle, gas lamps and light pools, brick terraces with lit windows, bunting over the road, crowd stands with the crest. Humped canal bridge (cars go light), railway cutting with the level crossing (bells, barriers, train). Grand Station with the clock rose window at the finish.
+- [ ] `?quick&track=rustmaw-pit`: dusty warm light (not a single orange), tusk arch at the start, scrap towers with neon sigils, cranes, furnaces with black smoke. Jump on the main straight, long jump off the wreck ramp, mud pit. Magnet crane hazard: tower on the far side of the road. Warlord idol.
+- [ ] `?quick&track=lirael-canopy`: rain, glowing canopies beside (never over) the road, rune banners, crystal barricades, mushrooms. Sap stream lanes follow the road through the curve. Mother Tree inside the climbing curve, jump over the mist gap.
+- [ ] In all four: no tall object hides the road or the cars from the board camera; no props on the road; no errors in the console.
+- [ ] Single race lists the four worlds; a full Cup goes Runegate → Cinderholme → Rustmaw → Lirael with no stand-in note on the briefing.
+- [ ] Back to `?quick` (foundry) after a world: the foundry looks as before (palette not inherited).
+- [ ] Low tier: no rain, still readable.
+
+### Phone
+
+- [ ] Each world at medium tier: FPS, loading time and readability (doc 04 D2).

@@ -42,9 +42,12 @@ test('Grand Prix: briefing, race, results with prizes, standings, workshop, next
   await page.getByTestId('standings-continue').click();
 
   await expect(page.getByTestId('workshop')).toBeVisible();
-  const before = await page.getByTestId('workshop-cash').textContent();
-  await page.getByTestId('buy-accel').click();
-  await expect(page.getByTestId('workshop-cash')).not.toHaveText(before ?? '');
+  // The autopilot does not always win: buy only when the cash covers the first level ($20,000).
+  const before = (await page.getByTestId('workshop-cash').textContent()) ?? '';
+  if (Number(before.replace(/[^0-9]/g, '')) >= 20_000) {
+    await page.getByTestId('buy-accel').click();
+    await expect(page.getByTestId('workshop-cash')).not.toHaveText(before);
+  } else await expect(page.getByTestId('buy-accel')).toBeDisabled();
   await page.getByTestId('workshop-done').click();
   await expect(page.getByTestId('briefing')).toContainText('Cinderholme Grand Station');
   await expect(page.getByTestId('briefing')).toContainText('Cup standings');

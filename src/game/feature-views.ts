@@ -15,6 +15,9 @@ import {
   PlaneGeometry,
   SphereGeometry,
   Vector3,
+  BufferGeometry,
+  DoubleSide,
+  Float32BufferAttribute,
   type Scene,
 } from 'three/webgpu';
 import type { ProceduralSet } from '../render/procedural/textures';
@@ -23,10 +26,35 @@ import type { SparkSystem } from '../render/fx/sparks';
 import type { RaceSim } from '../sim/race-sim';
 import { type CompiledHazard, hazardClock } from '../track/hazards';
 import { ink } from '../world/kit';
+import { tunables } from '../core/tunables';
+import type { CompiledTrack } from '../track/compile';
+
+/** Flat ribbon over the road between two lap distances and two lateral offsets (+ = right). */
+function laneRibbon(track: CompiledTrack, s0: number, s1: number, lat0: number, lat1: number, dy: number): BufferGeometry {
+  const n = track.samples.length;
+  const i0 = Math.floor(s0 / track.spacing);
+  const count = Math.max(2, Math.ceil((s1 - s0) / track.spacing) + 1);
+  const pos: number[] = [];
+  const idx: number[] = [];
+  for (let k = 0; k < count; k++) {
+    const p = track.samples[(((i0 + k) % n) + n) % n]!;
+    // Driver's right of the tangent is (-tz, tx).
+    for (const lat of [lat0, lat1]) pos.push(p.x - p.tz * lat, p.y + dy, p.z + p.tx * lat);
+    if (k < count - 1) {
+      const a = k * 2;
+      idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+    }
+  }
+  const geo = new BufferGeometry();
+  geo.setAttribute('position', new Float32BufferAttribute(pos, 3));
+  geo.setIndex(idx);
+  return geo;
+}
 
 const glow = (color: string, opacity = 0.6) => {
   const m = new MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: AdditiveBlending, color: new Color(color) });
   m.opacity = opacity;
+  m.side = DoubleSide;
   (m as unknown as { fog: boolean }).fog = false;
   return m;
 };
@@ -207,9 +235,11 @@ export class FeatureViews {
   /** Magnet crane: a scrap block drops on the marked lanes and stays there as a wall. */
   private crane(g: Group, h: CompiledHazard, tex: ProceduralSet): HazardView {
     const iron = ink({ map: tex.rust, mapping: 'world', mapScale: 0.3 });
-    // Tower beside the road on the side away from the zone. Local frame: +z along the track,
-    // the driver's right is local −x; the group sits at the zone centre.
-    const towerLat = (h.latC <= 0 ? 1 : -1) * (this.sim.track.halfWidth + 6);
+    // Tower beside the road on the side away from the board camera, so it never hides the road.
+    // Local frame: +z along the track, the driver's right is local −x; the group sits at the zone centre.
+    const az = (tunables.get<number>('camera.board.azimuth') * Math.PI) / 180;
+    const rightAway = -Math.cos(h.heading) * Math.sin(az) + Math.sin(h.heading) * Math.cos(az) > 0;
+    const towerLat = (rightAway ? 1 : -1) * (this.sim.track.halfWidth + 6);
     const towerLocalX = -(towerLat - h.latC);
     const tower = new Mesh(new BoxGeometry(2, 18, 2), iron);
     tower.position.set(towerLocalX, 9, 0);
@@ -259,17 +289,15 @@ export class FeatureViews {
 
   /** Sap streams: glowing lanes along the road, bright on the pulse, dim (and slippery) between. */
   private stream(g: Group, h: CompiledHazard): HazardView {
-    // A ribbon in the group's local frame (straight approximation along the track tangent).
-    const lane = new Mesh(new PlaneGeometry(h.width, h.length), glow('#3FF0E0', 0.2));
-    lane.rotation.x = -Math.PI / 2;
-    lane.position.y = 0.1;
+    // Ribbons in world space that follow the centre line (and its heights) through curves.
+    const scene = g.parent!;
+    const lane = new Mesh(laneRibbon(this.sim.track, h.s0, h.s1, h.lat0, h.lat1, 0.1), glow('#3FF0E0', 0.2));
     lane.renderOrder = 6;
-    g.add(lane);
-    const core = new Mesh(new PlaneGeometry(h.width * 0.3, h.length), glow('#B8FFF4', 0.15));
-    core.rotation.x = -Math.PI / 2;
-    core.position.y = 0.11;
+    scene.add(lane);
+    const c = (h.lat0 + h.lat1) / 2;
+    const core = new Mesh(laneRibbon(this.sim.track, h.s0, h.s1, c - h.width * 0.15, c + h.width * 0.15, 0.11), glow('#B8FFF4', 0.15));
     core.renderOrder = 6;
-    g.add(core);
+    scene.add(core);
     return {
       h,
       update: (phase, t, duration, time) => {
