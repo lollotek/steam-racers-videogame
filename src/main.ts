@@ -34,7 +34,7 @@ async function boot(): Promise<void> {
       return (...args: unknown[]) => (flow as unknown as Record<string, (...a: unknown[]) => unknown> | null)?.[k as string]?.(...args);
     },
   });
-  if (!flags.quick) flowUi.screen.value = 'title';
+  if (!flags.quick && !flags.custom) flowUi.screen.value = 'title';
   render(h(App, { touch, actions }), uiRoot);
 
   await initPhysics();

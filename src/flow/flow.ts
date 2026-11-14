@@ -11,6 +11,8 @@ import type { RendererHandle } from '../render/renderer';
 import { makeProceduralSet, type ProceduralSet } from '../render/procedural/textures';
 import { Game, quickSetup, type Entrant, type RaceSetup } from '../game/game';
 import { TRACKS, getTrack } from '../tracks';
+import { loadCustomTrack } from '../tracks/custom';
+import type { TrackFile } from '../track/track-format';
 import {
   CUP_ROUNDS,
   DIFFICULTY,
@@ -65,6 +67,13 @@ export class Flow implements FlowActions {
 
   /** Menus unless `quick` (tests and dev: `?test`, `?quick`). */
   async boot(): Promise<void> {
+    // Test drive from the track editor (doc 05 §6): 1 player + 3 AI, Normal.
+    const custom = this.ctx.flags.custom ? loadCustomTrack(this.ctx.store) : null;
+    if (custom) {
+      this.startSingle({ players: 1, difficulty: 'normal', vehicles: ['hotrod'] }, custom, 4);
+      return;
+    }
+    if (this.ctx.flags.custom) console.warn('[flow] ?custom: no track from the editor, showing the title');
     if (this.ctx.flags.quick) {
       await this.runRace(quickSetup(this.ctx.flags, this.ctx.isMobile));
       return;
@@ -118,17 +127,17 @@ export class Flow implements FlowActions {
 
   // --- Single race (gameplay.md §2.2): random grid, no workshop, no repair ---------------------------
 
-  startSingle(c: SetupChoice): void {
+  startSingle(c: SetupChoice, file?: TrackFile, racers?: number): void {
     const players = this.ctx.isMobile ? 1 : c.players;
     const d = DIFFICULTY[c.difficulty];
-    const n = this.racers(players);
+    const n = racers ? Math.max(players, racers) : this.racers(players);
     const entrants: Entrant[] = Array.from({ length: n }, (_, i) =>
       i < players
         ? { name: playerName(i, players), color: IDENTITY_COLORS[i]!, vehicle: c.vehicles[i] ?? 'hotrod' }
         : { name: RIVAL_NAMES[i]!, color: IDENTITY_COLORS[i]!, vehicle: aiVehicle(i), tune: tuneFor(noLevels(), d.aiPace), skill: d.aiSkill, catchUp: d.catchUp },
     );
     const seed = this.seed();
-    void this.runRace({ mode: 'single', track: this.laps(getTrack(c.trackId ?? null)), players, entrants, grid: randomGrid(n, seed), seed });
+    void this.runRace({ mode: 'single', track: this.laps(file ?? getTrack(c.trackId ?? null)), players, entrants, grid: randomGrid(n, seed), seed });
   }
 
   raceAgain(): void {

@@ -121,6 +121,8 @@ export interface TrackFile {
   /** Height of one level (m, default 4, doc 03 §7.3). */
   level?: number;
   pieces: Piece[];
+  /** Free tile layout saved by the track editor (doc 05 §4); the game ignores it. */
+  editor?: { version: number; tiles: { x: number; z: number; dir: number; piece: Piece }[] };
 }
 
 /** Jump geometry (doc 04 §3 A5): kicker, gap (no road), landing ramp. Metres. */

@@ -11,6 +11,7 @@ Steam-powered combat racing in the Southern Wastelands. Three.js (WebGPU + WebGL
 | [02 — Shader & Style Spec](docs/02-shader-style-spec.md) | Ink-comic rendering pipeline, parameters, palette |
 | [03 — Engine Architecture](docs/03-engine-architecture.md) | Code structure, loop, systems, tooling, milestones |
 | [04 — Grand Prix & worlds](docs/04-grand-prix.md) | M4 plan, Cup flow, the four faction worlds |
+| [05 — Track editor](docs/05-track-editor.md) | M5: `/mapeditor/` tile editor, Play, 3D preview, tabletop tileset |
 | [gameplay.md](docs/gameplay.md) | Gameplay reference (Italian) |
 | [Testing checklist](docs/testing-checklist.md) | Manual tests per milestone, PC + phone |
 
@@ -34,7 +35,9 @@ node tools/shoot.mjs <outDir> 'name={"post.debugView":"grayscale"}'   # headless
 
 The game opens on the title screen (Grand Prix, Single race). `?quick` (or `?test`) skips the menus and starts a race from the flags below.
 
-`?debug` tuning panel · `?track=foundry-01|proving-ground|runegate-deep|cinderholme-station|rustmaw-pit|lirael-canopy` · `?tier=low|medium|high|ultra` · `?backend=webgl2` · `?players=2` (PC split screen) · `?touch=1|0` · `?seed=N` · `?racers=4..8` · `?laps=1..9`
+`?debug` tuning panel · `?track=foundry-01|proving-ground|runegate-deep|cinderholme-station|rustmaw-pit|lirael-canopy` · `?tier=low|medium|high|ultra` · `?backend=webgl2` · `?players=2` (PC split screen) · `?touch=1|0` · `?seed=N` · `?racers=4..8` · `?laps=1..9` · `?custom` (race the track handed over by the editor)
+
+**Track editor:** `/mapeditor/` (PC) — see [doc 05](docs/05-track-editor.md).
 
 ## Status
 

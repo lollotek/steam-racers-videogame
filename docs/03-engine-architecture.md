@@ -76,7 +76,7 @@ steam-racers-videogame/
 │  ├─ flow/                  front-end flow: title → setup → briefing → race → results → standings → workshop
 │  ├─ race/                  race state machine, laps, positions
 │  ├─ rules/                 tabletop rules layer: gears, boiler, ramming, weapons, cards (gameplay.md)
-│  ├─ editor/                block-based level editor (after M3, §7.3)
+│  ├─ editor/                track editor page /mapeditor/ (doc 05)
 │  ├─ ai/                    racing line follower, avoidance, difficulty
 │  ├─ camera/                3/4 rotating follow camera
 │  ├─ fx/                    GPU particles, decals, trails, emitters
@@ -300,12 +300,12 @@ A simple grid editor in the spirit of block-based track builders: the user place
 | **Block definition** | GLB + JSON: footprint (cells), sockets (in/out position, direction, height), centerline segment, surface type, barricade edges, pickup slots, gameplay tags. |
 | **Validation** | Closed loop, sockets matched, no overlaps, start/finish present, minimum length; shows errors on the grid. |
 | **Generated surroundings** | Outside the track footprint, a **seeded generator** fills the space with biome set dressing: buildings, machinery, stands with crowds, smokestacks, debris, light sources, following rules per biome (density, distance from track, landmark slots). Same seed → same result. Editable seed + "reroll" button. |
-| **Runtime** | The editor is a separate app entry (`/editor.html`) sharing the engine, renderer and asset manager. "Test drive" button launches the track in the game. |
+| **Runtime** | The editor is a separate page (`/mapeditor/`, doc 05) sharing the track format, compiler and rules. "Play" launches the track in the game in a new tab. |
 | **Tabletop compatibility (secondary goal)** | The block grid maps 1:1 to **physical tiles**. Export targets later: printable top-down tile images (orthographic render per block, with bleed and cut marks) and track layout sheets; vehicle GLBs reusable for **miniatures** (watertight, scaled export for 3D print). Not in scope before M3, but block size and naming are chosen with this in mind. |
 
 **First version implemented in M1** (`src/game/dressing.ts`): seeded generator filling three bands around the track (edge: barrels, crates, tyres, sandbags, braziers, spike fences, scrap; mid: boilers, generators, pipe clusters, scrap piles, big gears; far: storage tanks, smoking chimneys, girder towers) plus ground debris, avoiding the road and hand-placed props, batched into one `InstancedMesh` per geometry/material pair. Densities are tunables (`dressing.*`).
 
-Editor implementation is scheduled **after M3** (M2/M3 use a hand-written test track JSON using the same block format).
+Editor implementation: **M5, doc 05** (free tile placement, live validation, Play, 3D preview and tabletop tileset).
 
 ---
 
