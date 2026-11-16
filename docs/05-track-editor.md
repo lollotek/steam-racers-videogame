@@ -1,6 +1,6 @@
 # 05 — Track editor (milestone M5)
 
-The block-based level editor announced in doc 03 §7.3 (A3). A separate page of the game, `/mapeditor/`, where tracks are built by placing tiles freely on the grid, checked live against the compiler and the Cup rules, saved as the same JSON the game reads, test-driven in a new tab and (later) previewed in 3D and printed as tabletop tiles.
+The block-based level editor announced in doc 03 §7.3 (A3). A separate page of the game, `/mapeditor/`, where tracks are built by placing tiles freely on the grid, checked live against the compiler and the Cup rules, saved as the same JSON the game reads, test-driven in a new tab, previewed in 3D and (later) printed as tabletop tiles.
 
 ## 1. Decisions (owner, 2026-11-14)
 
@@ -51,7 +51,7 @@ The standard tracks were migrated on 2026-11-14 (width 14 → 15, crate lanes sn
 |---|---|---|
 | **E1** | Page, tile layout model, 2D grid editor, inspector, live validation and stats, save / load / standard tracks / autosave, world selector, undo / redo | ✅ |
 | **E2** | Play button → new tab, `?custom` boot in the game | ✅ |
-| E3 | 3D preview panel (world builder + orbit camera, rebuilt on change) | — |
+| **E3** | 3D preview panel (world builder + orbit camera, rebuilt on change) | ✅ |
 | E4 | Tileset view: orthographic render per piece, print sheets with cut marks, layout sheet | — |
 | **G1** | Tabletop grid: units, width 15, crate columns, hazard columns / squares, start grid, editor squares and edge bands, `?grid` | ✅ |
 | **G2** | Half-size vehicles (`VEHICLE_SCALE`, `?vscale`) | ✅ |
@@ -89,12 +89,13 @@ Storage keys: `steamRacers.editor.doc` (autosave of the last track), `steamRacer
 
 | Area | Content |
 |---|---|
-| Top bar | New, Open file…, Standard track (list of `src/tracks`), Save JSON, Undo / Redo, **Play**, 3D preview (E3), Show tileset (E4) |
+| Top bar | New, Open file…, Standard track (list of `src/tracks`), Save JSON, Undo / Redo, **Play**, **3D preview** (`P`), Show tileset (E4) |
 | Palette (left) | Start, straight, ramp (straight with rise), crest, curve 1 / 2 / 3, jump 2 / 3 |
+| 3D preview (centre right, when open) | §8 |
 | Grid (centre) | Top view (north up, the driver's right on the right): road coloured by surface, edge bands one square wide coloured by barricade type, squares and column lines when zoomed in, travel arrows, jump gaps, crates, hazards, landmark footprints, level per tile; the open end and the ghost of the tile being placed (green = free, red = blocked) |
 | Inspector (right) | Selected tile: size, turn, surface, barricades, rise, crest, zone, crates, hazards, landmark, raw JSON. Crates and hazards are placed by column. Nothing selected: track settings (name, id, world, laps, width (fixed at 15 m, a button fixes older files), level height, default surface / barricade). Always: validation and the Cup report |
 
-Controls: left click places the current piece or selects a tile; drag a selected tile to move it; right / middle drag or drag on empty ground pans; wheel zooms. `R` rotates (piece being placed or selected tile), `F` flips a curve, `V` reverses the selected tile, `Enter` appends the current piece at the open end, `Del` deletes, `Esc` back to select, `Ctrl+Z` / `Ctrl+Y` undo / redo, `1`–`9` palette.
+Controls: left click places the current piece or selects a tile; drag a selected tile to move it; right / middle drag or drag on empty ground pans; wheel zooms. `R` rotates (piece being placed or selected tile), `F` flips a curve, `V` reverses the selected tile, `Enter` appends the current piece at the open end, `Del` deletes, `Esc` back to select, `Ctrl+Z` / `Ctrl+Y` undo / redo, `P` 3D preview, `1`–`9` palette.
 
 Hovering the open end cell orients the ghost to the open end automatically.
 
@@ -104,9 +105,17 @@ Zone and landmark names are suggested per world from the zones and landmarks the
 
 Play is enabled when the track compiles. It writes the track to `steamRacers.customTrack` and opens `/?custom` in a named tab (`steam-racers-play`, reused by the next Play). In the game, `?custom` (`flags.custom`) makes `Flow.boot` start a single race on that track: player 1 + 3 AI, Normal, random grid. Results offer Again / Title as usual. Without a stored track the game falls back to the title screen.
 
-## 8. 3D preview (E3, plan)
+## 8. 3D preview (E3)
 
-A second canvas in the editor built with the game's renderer and `world/build.ts` from the compiled track and the chosen biome, orbit camera (drag, wheel), "board camera" button; rebuilt (debounced) when the track compiles after an edit. Dressing seed editable with a reroll button (doc 03 §7.3).
+The **3D preview** button (or `P`) splits the centre area: grid on the left, 3D view on the right.
+
+- **Same scene as the game**: a second `WebGPURenderer` (WebGL2 fallback) with the game's ink pipeline, `buildWorld` (`world/build.ts`) on the compiled track and its world, the crate and hazard views (`game/feature-views.ts`, fed by a preview clock instead of `RaceSim`: hazards cycle through idle / warning / active) and the world's particle emitters. No vehicles, no physics.
+- **Rebuilt** 350 ms after the last change whenever the compiled track, its world or the seed change (renaming does not rebuild). A track that does not compile leaves the last build on screen. The camera stays put; loading another track frames it.
+- **Camera**: drag to orbit, right-drag (or Shift-drag) to pan, wheel to zoom. Buttons: **Orbit** (whole track, 3/4 view), **Board** (the race camera's azimuth and pitch, `camera.board.*`), **Top** (straight from above, oriented like the grid). Selecting a tile in the grid centres the 3D view on that piece.
+- **Squares** draws the tabletop squares on the road (the `?grid` overlay, §2). **Hazards ▶** runs or stops the hazard cycle.
+- **Seed** of the dressing (the props around the track, doc 03 §7.3), editable, 🎲 rerolls. It belongs to the preview only: the game picks its own seed per race.
+- Fog starts as in a race around the view target and is pushed out with the zoom, so the whole track stays readable from far away; the sun's shadow box grows with the zoom too.
+- `src/editor/preview3d.ts` (renderer, scene, orbit camera) is loaded on first open (its own chunk); `src/editor/Preview.tsx` is the panel. Closing the panel frees the renderer and the scene.
 
 ## 9. Tileset (E4, plan)
 
@@ -125,4 +134,4 @@ A Vite dev-server plugin exposes `POST /__editor/save` (dev only) that writes `s
 ## 11. Tests
 
 - `tests/unit/editor-layout.test.ts`: chain → tiles → chain round trip for every standard track (pieces identical, compiled cells identical), backward traversal and normalisation, broken / open / unconnected cases, compiler error mapping.
-- `tests/e2e/editor.spec.ts`: `/mapeditor/` loads without errors, a standard track loads and validates, Play stores the track.
+- `tests/e2e/editor.spec.ts`: `/mapeditor/` loads without errors, a standard track loads and validates, Play stores the track, the 3D preview builds the world, rebuilds on a world change and frees its canvas when closed.

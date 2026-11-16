@@ -23,11 +23,22 @@ import {
 import type { ProceduralSet } from '../render/procedural/textures';
 import type { ParticleSystem, Emitter } from '../render/fx/particles';
 import type { SparkSystem } from '../render/fx/sparks';
-import type { RaceSim } from '../sim/race-sim';
+import type { HazardPhase } from '../track/track-format';
 import { type CompiledHazard, hazardClock } from '../track/hazards';
 import { ink } from '../world/kit';
 import { tunables } from '../core/tunables';
 import type { CompiledTrack } from '../track/compile';
+import './follow-camera'; // registers camera.board.* (crane placement)
+
+/**
+ * What the views read: the race (`RaceSim`) in game, a still or looping clock in the editor's 3D
+ * preview (doc 05 §8).
+ */
+export interface FeatureSource {
+  readonly track: CompiledTrack;
+  readonly clock: number;
+  readonly features: { readonly pickups: readonly { active: boolean }[]; readonly phases: readonly HazardPhase[] };
+}
 
 /** Flat ribbon over the road between two lap distances and two lateral offsets (+ = right). */
 function laneRibbon(track: CompiledTrack, s0: number, s1: number, lat0: number, lat1: number, dy: number): BufferGeometry {
@@ -78,7 +89,7 @@ export class FeatureViews {
 
   constructor(
     scene: Scene,
-    public sim: RaceSim,
+    public sim: FeatureSource,
     tex: ProceduralSet,
     private readonly particles: ParticleSystem,
     private readonly sparks: SparkSystem,

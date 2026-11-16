@@ -32,6 +32,27 @@ test.describe('track editor', () => {
     expect(errors).toEqual([]);
   });
 
+  test('3D preview builds the world and follows edits', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.goto('/mapeditor/');
+    await page.getByTestId('standard').selectOption('foundry-01');
+    await page.getByTestId('preview-toggle').click();
+    await expect(page.getByTestId('preview-canvas')).toBeVisible();
+    await expect(page.getByTestId('preview-state')).toContainText('drag to orbit', { timeout: 30_000 });
+    const built = () => page.evaluate(() => (window as unknown as { __preview3d?: { biome: string | null } }).__preview3d?.biome ?? null);
+    await expect.poll(built, { timeout: 30_000 }).toBe('foundry');
+    // A change of world rebuilds the scene.
+    await page.getByTestId('world').selectOption('elven');
+    await expect.poll(built, { timeout: 30_000 }).toBe('elven');
+    // Closing frees the renderer (its canvas leaves the page).
+    await page.keyboard.press('Escape');
+    await page.locator('.grid').click({ position: { x: 5, y: 5 } });
+    await page.keyboard.press('p');
+    await expect(page.getByTestId('preview-canvas')).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+
   test('builds a closed loop from the keyboard', async ({ page }) => {
     await page.goto('/mapeditor/');
     await page.evaluate(() => localStorage.removeItem('steamRacers.editor.doc'));

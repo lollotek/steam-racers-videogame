@@ -156,9 +156,88 @@ h3 button {
 
 .canvas {
   grid-area: grid;
+  display: grid;
+  grid-template-columns: 1fr;
+  min-width: 0;
+  min-height: 0;
+}
+.canvas.split {
+  grid-template-columns: 1fr 1fr;
+}
+.grid-pane {
   position: relative;
   min-width: 0;
   min-height: 0;
+}
+
+/* 3D preview (doc 05 §8) */
+.preview {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  border-left: 1px solid var(--line);
+  background: #120c0a;
+}
+.preview-host {
+  position: absolute;
+  inset: 0;
+}
+.preview-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+.preview-bar {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  pointer-events: none;
+}
+.preview-bar > * {
+  pointer-events: auto;
+}
+.preview-bar .sep {
+  width: 1px;
+  height: 20px;
+  background: var(--line);
+  margin: 0 2px;
+}
+.preview-bar .grow {
+  flex: 1;
+  pointer-events: none;
+}
+.preview-bar label {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #1b1210c0;
+  color: var(--muted);
+}
+.preview-bar input {
+  width: 72px;
+  padding: 2px 4px;
+}
+.preview-note {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  max-width: calc(100% - 20px);
+  padding: 4px 10px;
+  border-radius: 4px;
+  background: #1b1210e0;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  pointer-events: none;
+}
+.preview-note.error {
+  border-color: var(--bad);
+  color: var(--bad);
 }
 .grid {
   display: block;

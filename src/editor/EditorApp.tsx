@@ -7,6 +7,7 @@ import { saveCustomTrack } from '../tracks/custom';
 import { docFromFile, newDoc, toTrackFile } from './layout';
 import { GridView } from './GridView';
 import { Inspector, WORLD_LABEL } from './Inspector';
+import { PreviewPanel, previewOpen } from './Preview';
 import {
   PALETTE,
   appendAtEnd,
@@ -90,6 +91,7 @@ export function EditorApp() {
       } else if (e.ctrlKey || e.metaKey || e.altKey) return;
       else if (k === 'r') rotate(e.shiftKey ? -1 : 1);
       else if (k === 'f') flip();
+      else if (k === 'p') previewOpen.value = !previewOpen.value;
       else if (k === 'v') reverseSelected();
       else if (k === 'enter') appendAtEnd();
       else if (k === 'delete' || k === 'backspace') deleteSelected();
@@ -155,7 +157,9 @@ export function EditorApp() {
         <button onClick={() => fitRequest.value++} title="Home">Fit</button>
         <span class="sep" />
         <button class="play" onClick={play} disabled={!v.compiled} data-testid="play">▶ Play</button>
-        <button disabled title="Coming in phase E3">3D preview</button>
+        <button class={previewOpen.value ? 'on' : ''} onClick={() => (previewOpen.value = !previewOpen.value)} title="P" data-testid="preview-toggle">
+          3D preview
+        </button>
         <button disabled title="Coming in phase E4">Show tileset</button>
       </header>
 
@@ -188,15 +192,21 @@ export function EditorApp() {
           <p>
             <kbd>V</kbd> reverse tile · <kbd>Del</kbd> delete
           </p>
+          <p>
+            <kbd>P</kbd> 3D preview
+          </p>
           <p>Drag a tile to move it; drag the ground or right-drag to pan; wheel to zoom.</p>
         </div>
       </nav>
 
-      <main class="canvas">
-        <GridView />
-        <div class={`status ${msg?.kind ?? ''}`}>
-          {msg ? msg.text : v.compiled ? `${doc.value.meta.name} · ${Math.round(v.compiled.length)} m · ${doc.value.tiles.length} tiles` : `${doc.value.meta.name} · ${v.errors[0]?.message ?? ''}`}
+      <main class={`canvas ${previewOpen.value ? 'split' : ''}`}>
+        <div class="grid-pane">
+          <GridView />
+          <div class={`status ${msg?.kind ?? ''}`}>
+            {msg ? msg.text : v.compiled ? `${doc.value.meta.name} · ${Math.round(v.compiled.length)} m · ${doc.value.tiles.length} tiles` : `${doc.value.meta.name} · ${v.errors[0]?.message ?? ''}`}
+          </div>
         </div>
+        {previewOpen.value && <PreviewPanel />}
       </main>
 
       <Inspector />
