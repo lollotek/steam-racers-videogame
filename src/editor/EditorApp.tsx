@@ -9,6 +9,8 @@ import { GridView } from './GridView';
 import { Inspector, WORLD_LABEL } from './Inspector';
 import { PreviewPanel, previewOpen } from './Preview';
 import { TilesetView, tilesetOpen } from './TilesetView';
+import { CupPanel, cupOpen } from './CupPanel';
+import { CAN_SAVE_TO_PROJECT, saveTrackToProject } from './project';
 import {
   PALETTE,
   appendAtEnd,
@@ -78,8 +80,8 @@ export function EditorApp() {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
       if (el.closest('input, textarea, select')) return;
-      if (tilesetOpen.value) {
-        if (e.key === 'Escape') tilesetOpen.value = false;
+      if (tilesetOpen.value || cupOpen.value) {
+        if (e.key === 'Escape') tilesetOpen.value = cupOpen.value = false;
         return;
       }
       const k = e.key.toLowerCase();
@@ -156,6 +158,14 @@ export function EditorApp() {
           ))}
         </select>
         <button onClick={save} title="Ctrl+S">Save JSON</button>
+        {CAN_SAVE_TO_PROJECT && (
+          <button onClick={() => void saveTrackToProject()} disabled={!v.compiled} data-testid="save-project" title="Dev server only: write src/tracks/<id>.json">
+            Save to project
+          </button>
+        )}
+        <button onClick={() => (cupOpen.value = true)} data-testid="cup-open" title="Tracks of the Cup and their order">
+          Cup…
+        </button>
         <span class="sep" />
         <button onClick={undo} disabled={!canUndo()} title="Ctrl+Z">↶</button>
         <button onClick={redo} disabled={!canRedo()} title="Ctrl+Y">↷</button>
@@ -218,6 +228,7 @@ export function EditorApp() {
 
       <Inspector />
       {tilesetOpen.value && <TilesetView />}
+      {cupOpen.value && <CupPanel />}
     </div>
   );
 }

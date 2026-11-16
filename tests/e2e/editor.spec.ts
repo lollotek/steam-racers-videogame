@@ -84,6 +84,21 @@ test.describe('track editor', () => {
     expect(errors).toEqual([]);
   });
 
+  test('Cup panel and the dev save endpoint (nothing written)', async ({ page, request }) => {
+    await page.goto('/mapeditor/');
+    await expect(page.getByTestId('save-project')).toBeVisible();
+    await page.getByTestId('cup-open').click();
+    await expect(page.getByTestId('cup-round')).toHaveCount(4);
+    await expect(page.getByTestId('cup-save')).toBeDisabled();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('cup-panel')).toHaveCount(0);
+    // The endpoint refuses other sites and bad ids before touching the disk.
+    const cross = await request.post('/__editor/save', { headers: { Origin: 'https://example.com' }, data: { kind: 'track', file: { id: 'x', pieces: [{}] } } });
+    expect(cross.status()).toBe(403);
+    const bad = await request.post('/__editor/save', { data: { kind: 'track', file: { id: '../x', pieces: [{}] } } });
+    expect(bad.status()).toBe(400);
+  });
+
   test('builds a closed loop from the keyboard', async ({ page }) => {
     await page.goto('/mapeditor/');
     await page.evaluate(() => localStorage.removeItem('steamRacers.editor.doc'));

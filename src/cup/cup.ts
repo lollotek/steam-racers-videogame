@@ -2,12 +2,13 @@
  * Steam Racers Cup (doc 04 §3 B2–B4, gameplay.md §2.1). Pure data + logic: no DOM, no Three.js,
  * runs in Node (unit tests, headless season runner).
  *
- * A season is four races, one per world. Each race pays prize money by position plus the money
+ * A season is the races of `cups.json` (four, one per world). Each race pays prize money by position plus the money
  * bags collected on the track; a wreck pays the repair. Between races the Workshop sells four
  * upgrade lines that last for the season. The Cup goes to whoever earned the most.
  * The AI earn and spend with the same rules, and grow from race to race by difficulty.
  */
 import { Rng } from '../core/rng';
+import cupsJson from './cups.json';
 
 export type Difficulty = 'easy' | 'normal' | 'hard';
 export const DIFFICULTIES: readonly Difficulty[] = ['easy', 'normal', 'hard'];
@@ -24,39 +25,17 @@ export interface CupRound {
   blurb: string;
 }
 
-export const CUP_NAME = 'Steam Racers Cup';
-
-/** Cup order (G1): Dwarven → Victorian → Orc → Elven. */
-export const CUP_ROUNDS: readonly CupRound[] = [
-  {
-    world: 'Dwarven deep-hall',
-    track: 'Runegate Deep',
-    trackId: 'runegate-deep',
-    hazard: 'Forge vents: a grate glows, then a fire column. 1 PF, +1 PV.',
-    blurb: 'The Descent: carved pillars, brass pipes and the Rune Engine. Technical, medium speed.',
-  },
-  {
-    world: 'Victorian industrial city',
-    track: 'Cinderholme Grand Station',
-    trackId: 'cinderholme-station',
-    hazard: 'Level crossing: bells, barriers, then a freight train. Crash and 3 PF.',
-    blurb: 'A street circuit of brick, cast iron and gas light. Wet cobbles, 90° corners.',
-  },
-  {
-    world: 'Orc scrapyard',
-    track: 'Rustmaw Pit',
-    trackId: 'rustmaw-pit',
-    hazard: 'Magnet crane: the shadow grows, a scrap block drops. 4 PF, then a wall.',
-    blurb: 'Wide and rough through the scrap mountains, under the Warlord idol. Hard edges.',
-  },
-  {
-    world: 'Elven village',
-    track: 'Lirael Canopy',
-    trackId: 'lirael-canopy',
-    hazard: 'Sap streams: ride the lit lanes for steam; between pulses they are slippery.',
-    blurb: 'The finale on the canopy level: long flowing curves in the rain.',
-  },
-];
+/**
+ * The Cup is data (doc 05 §10): `src/cup/cups.json`, edited from the track editor (dev builds
+ * write it back into the project). Order: Dwarven → Victorian → Orc → Elven (G1).
+ */
+export interface CupConfig {
+  name: string;
+  rounds: CupRound[];
+}
+export const CUP_CONFIG = cupsJson as CupConfig;
+export const CUP_NAME = CUP_CONFIG.name;
+export const CUP_ROUNDS: readonly CupRound[] = CUP_CONFIG.rounds;
 
 // --- Difficulty (B4) ----------------------------------------------------------------------------
 

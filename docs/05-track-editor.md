@@ -13,7 +13,7 @@ The block-based level editor announced in doc 03 §7.3 (A3). A separate page of 
 | E-E | World | The world (biome) of the track is chosen in the editor; it drives the 3D preview, the tileset render and the dressing in game. |
 | E-F | 3D preview | In scope: a 3D view of the real world (same builder as the game) beside the grid. |
 | E-G | Tabletop tiles | "Show tileset": **rendered** top-down images (the game's ink look), one **16 × 16 cm module tile per grid cell** (§2). Multi-cell pieces (big curves, long straights) are **split into module tiles**, labelled with the piece number and the part. |
-| E-H | Cup and build | Later (E5): a dev-only way to save editor tracks into `src/tracks` and choose which tracks make up each Grand Prix. |
+| E-H | Cup and build | E5: a dev-only way to save editor tracks into `src/tracks` and choose which tracks make up each Grand Prix. |
 | E-I | Tabletop grid | **Squares** (decided 2026-11-14, see §2): one vehicle per square, 8 × 8 squares per grid cell, 6 road squares + 1 edge square per side, 2 cm per printed square, 2.5 m per square in 3D. |
 
 ## 2. Tabletop grid (`src/track/units.ts`)
@@ -55,7 +55,7 @@ The standard tracks were migrated on 2026-11-14 (width 14 → 15, crate lanes sn
 | **E4** | Tileset view: orthographic render per module, Grid / Lanes squares, print sheets with cut marks, layout sheet | ✅ |
 | **G1** | Tabletop grid: units, width 15, crate columns, hazard columns / squares, start grid, editor squares and edge bands, `?grid` | ✅ |
 | **G2** | Half-size vehicles (`VEHICLE_SCALE`, `?vscale`) | ✅ |
-| E5 | Dev-only "save to project" + Cup configuration file | — |
+| **E5** | Dev-only "save to project" + Cup configuration file (`src/cup/cups.json`) | ✅ |
 
 ## 4. Tile layout model (`src/editor/layout.ts`)
 
@@ -89,7 +89,7 @@ Storage keys: `steamRacers.editor.doc` (autosave of the last track), `steamRacer
 
 | Area | Content |
 |---|---|
-| Top bar | New, Open file…, Standard track (list of `src/tracks`), Save JSON, Undo / Redo, **Play**, **3D preview** (`P`), **Show tileset** (§9) |
+| Top bar | New, Open file…, Standard track (list of `src/tracks`), Save JSON, **Save to project** (dev only, §10), **Cup…** (§10), Undo / Redo, **Play**, **3D preview** (`P`), **Show tileset** (§9) |
 | Palette (left) | Start, straight, ramp (straight with rise), crest, curve 1 / 2 / 3, jump 2 / 3 |
 | 3D preview (centre right, when open) | §8 |
 | Grid (centre) | Top view (north up, the driver's right on the right): road coloured by surface, edge bands one square wide coloured by barricade type, squares and column lines when zoomed in, travel arrows, jump gaps, crates, hazards, landmark footprints, level per tile; the open end and the ghost of the tile being placed (green = free, red = blocked) |
@@ -130,12 +130,24 @@ The **3D preview** button (or `P`) splits the centre area: grid on the left, 3D 
 - **Print** (browser print → PDF, at 100 % scale, no "fit to page"): a **layout sheet** first (the whole track from above with the module outlines and numbers, `7·2` = piece 7, cell 2), then the modules with cut marks at the 16 cm trim and a caption: **A4 × 1** (portrait, one module per page) or **A3 × 2** (landscape, two per page). The page size is set with `@page`.
 - `?tilepx=200` renders small tiles (quick checks of the sheets; the printed size stays 16 cm). `node tools/print/tileset-pdf.mjs out.pdf [a4|a3] [track-id]` saves the PDF of a standard track from the dev server (headless Chromium).
 
-## 10. Cup and build (E5, plan)
+## 10. Cup and build (E5)
 
-A Vite dev-server plugin exposes `POST /__editor/save` (dev only) that writes `src/tracks/<id>.json`; the editor shows "Save to project" in dev builds. Cup rounds move from code to `src/cup/cups.json` (Cup → ordered track ids), edited from the editor; `src/tracks/index.ts` picks up every JSON in the folder (`import.meta.glob`).
+**Tracks are files.** `src/tracks/index.ts` loads every `src/tracks/*.json` with `import.meta.glob`, keyed by file name (the default track first, then by name): adding a track is adding a file. The headless tools read the files directly, as before.
+
+**Save to project** (top bar, **dev server only**): writes the current track as `src/tracks/<id>.json` (the id field of the track settings: lower-case letters, digits, dashes). Only a raceable track is saved, without the `editor` layout (its chain is the compiler's own layout); an existing file asks before being overwritten. The page then reloads to pick up the new track list (the autosave is written first; the confirmation stays on screen).
+
+**The Cup is data**: `src/cup/cups.json` = `{ name, rounds: [{ trackId, track, world, hazard, blurb }] }`, in race order; `src/cup/cup.ts` exports it as `CUP_CONFIG` / `CUP_NAME` / `CUP_ROUNDS`. The briefing shows `world`, `track`, `hazard` and `blurb`. The game's menus offer one Cup.
+
+**Cup…** (top bar) edits it: Cup name; per race the track (any file of `src/tracks`), the world name (suggested from the other races of the same biome, else the editor's world label), the hazard and the description lines; reorder (↑ ↓), remove, **+ Add race** (the track being edited if it is in the project). Tracks that break the Cup rules (doc 04 §4) show the problems under their race. **Save to project** writes `src/cup/cups.json` (track names copied from the track files) and reloads; outside the dev server the button downloads `cups.json` instead.
+
+**Dev server endpoint** (`tools/vite/editor-save.ts`, a Vite plugin applied only to `vite serve`, never in a build): `POST /__editor/save` with `{ "kind": "track", "file": … }` or `{ "kind": "cups", "cups": … }`. It accepts only JSON from the dev server's own pages (another origin → 403), checks the id (no paths), and writes the files in the layout of the hand-written tracks (`src/editor/format.ts`: one key per line, one piece / tile / race per line), so saving a standard track gives a clean diff.
+
+A saved Cup in progress (`steamRacers.cup.v1`) keeps its round number: changing the Cup between two sessions changes the races still to run.
 
 ## 11. Tests
 
 - `tests/unit/editor-layout.test.ts`: chain → tiles → chain round trip for every standard track (pieces identical, compiled cells identical), backward traversal and normalisation, broken / open / unconnected cases, compiler error mapping.
 - `tests/e2e/editor.spec.ts`: `/mapeditor/` loads without errors, a standard track loads and validates, Play stores the track, the 3D preview builds the world, rebuilds on a world change and frees its canvas when closed, the tileset lists the modules and renders two of them (small, software WebGL in CI).
+- `tests/unit/format.test.ts`: re-formatting every track file reproduces it. `tests/unit/editor-save.test.ts`: the endpoint writes tracks and the Cup in a temporary project, refuses bad ids and kinds; every Cup race names a track of the project.
+- `tests/e2e/editor.spec.ts` (E5): the Cup panel lists the 4 races; the endpoint refuses another origin and a bad id (nothing written).
 - `tests/unit/tileset.test.ts`: modules per piece (curve 3 → 8, labels), standard tracks (one module per printed cell, inside the footprint, race order), Lanes / Grid square lines.

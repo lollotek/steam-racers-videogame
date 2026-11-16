@@ -115,7 +115,7 @@ export function TitleScreen({ actions }: { actions: FlowActions }) {
           )}
           <Option
             label="Grand Prix"
-            hint={`${CUP_NAME}: ${CUP_ROUNDS.length} races, one per world${canContinue ? ' (replaces the saved Cup)' : ''}`}
+            hint={`${CUP_NAME}: ${CUP_ROUNDS.length} races${canContinue ? ' (replaces the saved Cup)' : ''}`}
             testid="menu-grand-prix"
             onPick={() => {
               setMode('cup');

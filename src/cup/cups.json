@@ -1,0 +1,9 @@
+{
+  "name": "Steam Racers Cup",
+  "rounds": [
+    { "trackId": "runegate-deep", "track": "Runegate Deep", "world": "Dwarven deep-hall", "hazard": "Forge vents: a grate glows, then a fire column. 1 PF, +1 PV.", "blurb": "The Descent: carved pillars, brass pipes and the Rune Engine. Technical, medium speed." },
+    { "trackId": "cinderholme-station", "track": "Cinderholme Grand Station", "world": "Victorian industrial city", "hazard": "Level crossing: bells, barriers, then a freight train. Crash and 3 PF.", "blurb": "A street circuit of brick, cast iron and gas light. Wet cobbles, 90° corners." },
+    { "trackId": "rustmaw-pit", "track": "Rustmaw Pit", "world": "Orc scrapyard", "hazard": "Magnet crane: the shadow grows, a scrap block drops. 4 PF, then a wall.", "blurb": "Wide and rough through the scrap mountains, under the Warlord idol. Hard edges." },
+    { "trackId": "lirael-canopy", "track": "Lirael Canopy", "world": "Elven village", "hazard": "Sap streams: ride the lit lanes for steam; between pulses they are slippery.", "blurb": "The finale on the canopy level: long flowing curves in the rain." }
+  ]
+}

@@ -3,24 +3,21 @@
  * `?track=<id>` picks one; unknown ids fall back to the foundry.
  */
 import type { TrackFile } from '../track/track-format';
-import foundry from './foundry-01.json';
-import provingGround from './proving-ground.json';
-import runegate from './runegate-deep.json';
-import cinderholme from './cinderholme-station.json';
-import rustmaw from './rustmaw-pit.json';
-import lirael from './lirael-canopy.json';
 
-export const TRACKS: Record<string, TrackFile> = {
-  'foundry-01': foundry as TrackFile,
-  'proving-ground': provingGround as TrackFile,
-  // The four Cup worlds (doc 04 §7), in Cup order.
-  'runegate-deep': runegate as TrackFile,
-  'cinderholme-station': cinderholme as TrackFile,
-  'rustmaw-pit': rustmaw as TrackFile,
-  'lirael-canopy': lirael as TrackFile,
-};
+/**
+ * Every JSON file in this folder is a track, keyed by its file name (doc 05 §10: the editor's
+ * "Save to project" just adds a file). The default track first, then by name.
+ */
+const FILES = import.meta.glob<TrackFile>('./*.json', { eager: true, import: 'default' });
+const ID = (path: string) => path.replace(/^\.\//, '').replace(/\.json$/, '');
 
 export const DEFAULT_TRACK = 'foundry-01';
+
+export const TRACKS: Record<string, TrackFile> = Object.fromEntries(
+  Object.entries(FILES)
+    .map(([path, file]) => [ID(path), file] as const)
+    .sort(([a, fa], [b, fb]) => (a === DEFAULT_TRACK ? -1 : b === DEFAULT_TRACK ? 1 : fa.name.localeCompare(fb.name))),
+);
 
 export function getTrack(id: string | null): TrackFile {
   const t = id ? TRACKS[id] : undefined;

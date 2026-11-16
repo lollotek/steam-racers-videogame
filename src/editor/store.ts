@@ -76,13 +76,21 @@ export const validation = computed(() => validateDoc(doc.value));
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 function autosave(d: EditorDoc): void {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    try {
-      storage()?.setItem(AUTOSAVE_KEY, JSON.stringify(toTrackFile(d)));
-    } catch {
-      /* quota / private mode: the track only lives in this tab */
-    }
-  }, 300);
+  saveTimer = setTimeout(() => writeAutosave(d), 300);
+}
+
+function writeAutosave(d: EditorDoc): void {
+  try {
+    storage()?.setItem(AUTOSAVE_KEY, JSON.stringify(toTrackFile(d)));
+  } catch {
+    /* quota / private mode: the track only lives in this tab */
+  }
+}
+
+/** Write the autosave now (before something may reload the page, e.g. a save to the project). */
+export function flushAutosave(): void {
+  clearTimeout(saveTimer);
+  writeAutosave(doc.value);
 }
 
 /** Apply an edit (undoable). Tiles driven backwards are normalised. */

@@ -2,6 +2,7 @@
 import { defineConfig, type Plugin } from 'vite';
 import preact from '@preact/preset-vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import { editorSave } from './tools/vite/editor-save';
 
 /** `/mapeditor` → `/mapeditor/` in dev and preview (GitHub Pages redirects folders by itself). */
 const editorRedirect = (): Plugin => {
@@ -25,6 +26,8 @@ const editorRedirect = (): Plugin => {
 export default defineConfig({
   plugins: [
     editorRedirect(),
+    // Dev only: the track editor's "Save to project" (doc 05 §10).
+    editorSave(),
     preact(),
     VitePWA({
       registerType: 'autoUpdate',
