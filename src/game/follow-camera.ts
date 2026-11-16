@@ -17,7 +17,7 @@ tunables.registerGroup('camera', [
   // Chase mode.
   { key: 'camera.fov', type: 'number', default: 30, min: 10, max: 70, step: 1, unit: '°', label: 'Chase FOV' },
   { key: 'camera.pitch', type: 'number', default: 52, min: 20, max: 89, step: 1, unit: '°', label: 'Chase pitch' },
-  { key: 'camera.distance', type: 'number', default: 58, min: 10, max: 200, step: 1, unit: 'm', label: 'Chase distance' },
+  { key: 'camera.distance', type: 'number', default: 58, min: 10, max: 200, step: 1, unit: 'm', label: 'Chase distance (× vehicle scale)' },
   { key: 'camera.distanceAtSpeed', type: 'number', default: 70, min: 10, max: 240, step: 1, unit: 'm', label: 'Chase distance at max speed' },
   { key: 'camera.lookAhead', type: 'number', default: 12, min: 0, max: 30, step: 0.5, unit: 'm', label: 'Chase look-ahead' },
   { key: 'camera.yawHalfLife', type: 'number', default: 0.35, min: 0.02, max: 2, step: 0.01, unit: 's', label: 'Chase yaw half-life' },
@@ -27,7 +27,7 @@ tunables.registerGroup('camera', [
   { key: 'camera.board.azimuth', type: 'number', default: 35, min: -180, max: 180, step: 1, unit: '°', label: 'Board azimuth' },
   { key: 'camera.board.follow', type: 'number', default: 0, min: 0, max: 1, step: 0.05, label: 'Board yaw follow (0 = fixed)' },
   { key: 'camera.board.followHalfLife', type: 'number', default: 2.5, min: 0.1, max: 10, step: 0.1, unit: 's', label: 'Board yaw follow half-life' },
-  { key: 'camera.board.distance', type: 'number', default: 92, min: 10, max: 300, step: 1, unit: 'm', label: 'Board distance' },
+  { key: 'camera.board.distance', type: 'number', default: 92, min: 10, max: 300, step: 1, unit: 'm', label: 'Board distance (× vehicle scale)' },
   { key: 'camera.board.distanceAtSpeed', type: 'number', default: 104, min: 10, max: 320, step: 1, unit: 'm', label: 'Board distance at max speed' },
   { key: 'camera.board.lookAhead', type: 'number', default: 14, min: 0, max: 40, step: 0.5, unit: 'm', label: 'Board look-ahead' },
 ]);
@@ -61,7 +61,11 @@ export class FollowCamera {
   private trauma = 0;
   private shakeTime = 0;
 
-  constructor(aspect: number) {
+  /**
+   * @param zoom vehicle size factor (`?vscale`): distances and look-ahead are the tunables × zoom,
+   * so the vehicles keep their size on screen whatever their scale.
+   */
+  constructor(aspect: number, private readonly zoom = 1) {
     this.camera = new PerspectiveCamera(tunables.get('camera.fov'), aspect, 2, 1000);
   }
 
@@ -91,7 +95,7 @@ export class FollowCamera {
 
     const fx = Math.sin(target.heading);
     const fz = Math.cos(target.heading);
-    const ahead = t(`${p}lookAhead`) * target.speedFrac;
+    const ahead = t(`${p}lookAhead`) * this.zoom * target.speedFrac;
     const goalX = target.x + fx * ahead;
     const goalZ = target.z + fz * ahead;
     const goalY = target.y ?? 0;
@@ -108,7 +112,7 @@ export class FollowCamera {
     const boardYaw = azimuth + t('camera.board.follow') * this.boardHeading; // boardHeading is unwrapped → no jumps
     const goalYaw = board ? boardYaw : this.chaseYaw;
     const goalPitch = t(`${p}pitch`) * DEG;
-    const goalDist = t(`${p}distance`) + (t(`${p}distanceAtSpeed`) - t(`${p}distance`)) * target.speedFrac;
+    const goalDist = (t(`${p}distance`) + (t(`${p}distanceAtSpeed`) - t(`${p}distance`)) * target.speedFrac) * this.zoom;
     const goalFov = t(`${p}fov`);
 
     if (!this.initialized) {

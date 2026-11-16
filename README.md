@@ -35,7 +35,7 @@ node tools/shoot.mjs <outDir> 'name={"post.debugView":"grayscale"}'   # headless
 
 The game opens on the title screen (Grand Prix, Single race). `?quick` (or `?test`) skips the menus and starts a race from the flags below.
 
-`?debug` tuning panel · `?track=foundry-01|proving-ground|runegate-deep|cinderholme-station|rustmaw-pit|lirael-canopy` · `?tier=low|medium|high|ultra` · `?backend=webgl2` · `?players=2` (PC split screen) · `?touch=1|0` · `?seed=N` · `?racers=4..8` · `?laps=1..9` · `?custom` (race the track handed over by the editor) · `?grid` (tabletop squares on the road)
+`?debug` tuning panel · `?track=foundry-01|proving-ground|runegate-deep|cinderholme-station|rustmaw-pit|lirael-canopy` · `?tier=low|medium|high|ultra` · `?backend=webgl2` · `?players=2` (PC split screen) · `?touch=1|0` · `?seed=N` · `?racers=4..8` · `?laps=1..9` · `?custom` (race the track handed over by the editor) · `?grid` (tabletop squares on the road) · `?vscale=0.25..1.5` (vehicle size, default 0.5)
 
 **Track editor:** `/mapeditor/` (PC) — see [doc 05](docs/05-track-editor.md).
 

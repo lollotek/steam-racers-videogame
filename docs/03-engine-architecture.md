@@ -600,5 +600,5 @@ After M4: garage/upgrades, modules, full arsenal, cards and race events, driving
 | A3 | Track authoring | ✅ **Decided (2026-11-12):** block-based grid editor + generated surroundings, compatible with tabletop tiles/miniatures (§7.3); after M3. |
 | A4 | Distribution | ✅ **Decided (2026-11-12):** PWA only. |
 | A5 | Gameplay reference | ✅ **Decided (2026-11-12):** [gameplay.md](gameplay.md); simple gameplay up to M3, advanced systems after. |
-| A6 | Block size vs tabletop tile size and vehicle scale | ✅ **Revised (2026-11-14):** tabletop grid of squares (doc 05 §2): 20 m cell = 8 × 8 squares of 2.5 m, track 15 m = 6 squares + 1 edge square per side, printed 2 cm per square (16 × 16 cm module tiles, 1:125). |
+| A6 | Block size vs tabletop tile size and vehicle scale | ✅ **Revised (2026-11-14):** tabletop grid of squares (doc 05 §2): 20 m cell = 8 × 8 squares of 2.5 m, track 15 m = 6 squares + 1 edge square per side, printed 2 cm per square (16 × 16 cm module tiles, 1:125). Vehicles at half size since 2026-11-16 (a hot rod is one square, `VEHICLE_SCALE`, `?vscale`). |
 | A7 | Gameplay values (`rules` groups referenced in gameplay.md: gear speeds, PV costs, boiler timings, damage) | ✅ **Decided (2026-11-13):** keep the current placeholder values (all tunable via `?debug`, §7.5); adjust them after playtests. |

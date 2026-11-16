@@ -8,6 +8,7 @@ import { NEUTRAL_TUNE, type VehicleTune } from '../cup/cup';
 import type RAPIER from '@dimforge/rapier3d-compat';
 import type { ActionFrame } from '../input/actions';
 import { tunables } from '../core/tunables';
+import { VEHICLE_SCALE } from '../track/units';
 import { type GearboxOutput, type GearboxState, createGearbox, stepGearbox } from './gearbox';
 import type { BoilerState } from '../rules/boiler';
 import { SURFACE_DRAG, SURFACE_GRIP, type Surface } from '../track/track-format';
@@ -63,10 +64,35 @@ export interface VehicleSpec {
   drive: 'rear' | 'all';
   /** Height of the visual root (ground contact) below the body centre. */
   visualOffsetY: number;
+  /** Size factor applied by `scaleSpec` (1 = the full-size spec below). */
+  scale?: number;
 }
 
 export const HOT_ROD: VehicleSpec = { half: { x: 1.0, y: 0.5, z: 2.5 }, wheelRadius: 0.75, track: 1.2, front: 1.8, rear: -1.6, drive: 'rear', visualOffsetY: 1.15 };
 export const STEAM_TANK: VehicleSpec = { half: { x: 1.4, y: 0.7, z: 2.7 }, wheelRadius: 0.6, track: 1.35, front: 1.9, rear: -1.9, drive: 'all', visualOffsetY: 1.25 };
+
+export { VEHICLE_SCALE };
+
+/**
+ * The spec at `k` × its size. Mass, engine and top speed are unchanged; the physics keeps the same
+ * paths in metres: inertia follows the size (∝ k²), the steering angle is reduced so the turning
+ * radius stays the same (tan a' = k · tan a), the suspension is stiffer (sag and travel ∝ k).
+ */
+export function scaleSpec(spec: VehicleSpec, k: number): VehicleSpec {
+  const base = spec.scale ?? 1;
+  const f = k / base;
+  const h = spec.half;
+  return {
+    ...spec,
+    half: { x: h.x * f, y: h.y * f, z: h.z * f },
+    wheelRadius: spec.wheelRadius * f,
+    track: spec.track * f,
+    front: spec.front * f,
+    rear: spec.rear * f,
+    visualOffsetY: spec.visualOffsetY * f,
+    scale: k,
+  };
+}
 
 export type SurfaceQuery = (x: number, z: number) => Surface;
 
@@ -118,14 +144,14 @@ export class PhysicsVehicle {
     this.gearbox = createGearbox(boiler);
     const { half } = spec;
     const bodyDesc = rapier.RigidBodyDesc.dynamic()
-      .setTranslation(spawn.x, (spawn.y ?? 0) + spec.wheelRadius + 0.6, spawn.z)
+      .setTranslation(spawn.x, (spawn.y ?? 0) + spec.wheelRadius + 0.6 * (spec.scale ?? 1), spawn.z)
       .setRotation(yawQuat(spawn.heading))
       .setLinearDamping(0.05)
       .setAngularDamping(0.8)
       .setCcdEnabled(true);
     this.body = world.createRigidBody(bodyDesc);
     // The collider covers the wheels too, so a wheel can never sink into a barrier or another car.
-    this.halfX = Math.max(half.x, spec.track + 0.3);
+    this.halfX = Math.max(half.x, spec.track + 0.3 * (spec.scale ?? 1));
     const col = rapier.ColliderDesc.cuboid(this.halfX, half.y, half.z)
       .setCollisionGroups(CHASSIS_GROUPS)
       .setFriction(0.3)
@@ -136,7 +162,7 @@ export class PhysicsVehicle {
     this.controller.indexUpAxis = 1;
     this.controller.setIndexForwardAxis = 2;
     const y = -half.y * 0.6;
-    const rest = 0.45;
+    const rest = 0.45 * (spec.scale ?? 1);
     for (const [x, z] of [[-spec.track, spec.front], [spec.track, spec.front], [-spec.track, spec.rear], [spec.track, spec.rear]] as const) {
       this.controller.addWheel({ x, y, z }, { x: 0, y: -1, z: 0 }, { x: -1, y: 0, z: 0 }, rest, spec.wheelRadius);
     }
@@ -157,9 +183,11 @@ export class PhysicsVehicle {
     // Low centre of mass keeps arcade vehicles on their wheels.
     this.collider.setMassProperties(mass, { x: 0, y: -half.y * 0.9, z: 0 }, inertia, { x: 0, y: 0, z: 0, w: 1 });
     for (let i = 0; i < 4; i++) {
-      this.controller.setWheelSuspensionStiffness(i, tunables.get('handling.suspensionStiffness'));
-      this.controller.setWheelSuspensionCompression(i, tunables.get('handling.suspensionDamping'));
-      this.controller.setWheelSuspensionRelaxation(i, tunables.get('handling.suspensionDamping') * 1.2);
+      // A scaled vehicle keeps its sag and travel in proportion (stiffness / k) with the same damping ratio.
+      const k = this.spec.scale ?? 1;
+      this.controller.setWheelSuspensionStiffness(i, tunables.get('handling.suspensionStiffness') / k);
+      this.controller.setWheelSuspensionCompression(i, tunables.get('handling.suspensionDamping') / Math.sqrt(k));
+      this.controller.setWheelSuspensionRelaxation(i, (tunables.get('handling.suspensionDamping') * 1.2) / Math.sqrt(k));
       this.controller.setWheelMaxSuspensionForce(i, mass * 60);
       this.controller.setWheelMaxSuspensionTravel(i, 0.35);
     }
@@ -214,7 +242,9 @@ export class PhysicsVehicle {
     }
 
     // Steering (front wheels), less lock at speed.
-    const steerAngle = -this.gearbox.steer * t('handling.maxSteer') * (1 - (1 - t('handling.steerAtSpeed')) * speedFrac);
+    const steerRaw = -this.gearbox.steer * t('handling.maxSteer') * (1 - (1 - t('handling.steerAtSpeed')) * speedFrac);
+    // A scaled vehicle (shorter wheelbase) keeps the turning radius in metres: tan(a') = k · tan(a).
+    const steerAngle = Math.atan((this.spec.scale ?? 1) * Math.tan(steerRaw));
     vc.setWheelSteering(0, steerAngle);
     vc.setWheelSteering(1, steerAngle);
 
@@ -343,7 +373,7 @@ export class PhysicsVehicle {
 
   /** Put the vehicle at a pose with zero velocity (reposition / respawn). */
   teleport(x: number, z: number, heading: number, y = 0): void {
-    this.body.setTranslation({ x, y: y + this.spec.wheelRadius + 0.6, z }, true);
+    this.body.setTranslation({ x, y: y + this.spec.wheelRadius + 0.6 * (this.spec.scale ?? 1), z }, true);
     this.body.setRotation(yawQuat(heading), true);
     this.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
     this.body.setAngvel({ x: 0, y: 0, z: 0 }, true);

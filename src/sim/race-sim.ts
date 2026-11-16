@@ -8,7 +8,7 @@ import { emptyFrame } from '../input/actions';
 import { tunables } from '../core/tunables';
 import { compileTrack, sampleAt, type CompiledTrack } from '../track/compile';
 import type { TrackFile } from '../track/track-format';
-import { GROUND_GROUPS, PhysicsVehicle, WALL_GROUPS, type VehicleSpec } from '../vehicles/vehicle-physics';
+import { GROUND_GROUPS, PhysicsVehicle, VEHICLE_SCALE, WALL_GROUPS, scaleSpec, type VehicleSpec } from '../vehicles/vehicle-physics';
 import { createProgress, standings, updateProgress, type RacerProgress } from '../race/progress';
 import { barricadeParams, classifyImpact, speedAfterHit } from '../race/barricades';
 import type { Barricade } from '../track/track-format';
@@ -128,7 +128,11 @@ export class RaceSim {
   readonly features: TrackFeatures;
   private idle = emptyFrame();
 
-  constructor(file: TrackFile, racers: RacerConfig[], seed = 1) {
+  /**
+   * `vehicleScale`: size factor of the vehicles (default `VEHICLE_SCALE`); a spec already scaled
+   * (`scaleSpec`) is used as is.
+   */
+  constructor(file: TrackFile, racers: RacerConfig[], seed = 1, vehicleScale = VEHICLE_SCALE) {
     this.track = compileTrack(file);
     this.world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
     this.world.timestep = SIM_STEP;
@@ -139,7 +143,8 @@ export class RaceSim {
       const slot = this.track.spawn[gridSlot % this.track.spawn.length]!;
       const stats = vehicleStats(cfg.stats ?? (cfg.spec.half.x > 1.2 ? 'tank' : 'hotrod'));
       const rules = createRacerRules(stats, gridSlot === 0);
-      const vehicle = new PhysicsVehicle(RAPIER, this.world, cfg.spec, slot, rules.boiler);
+      const spec = cfg.spec.scale !== undefined ? cfg.spec : scaleSpec(cfg.spec, vehicleScale);
+      const vehicle = new PhysicsVehicle(RAPIER, this.world, spec, slot, rules.boiler);
       if (cfg.tune) vehicle.tune = { ...cfg.tune };
       const edge: EdgeState = { contact: false, side: 1, barricade: file.defaultBarricade, time: 0, tick: 0, away: 99, slide: 0, x: 0, z: 0, nx: 0, nz: 0 };
       this.racers.push({ index: i, name: cfg.name, vehicle, progress: createProgress(this.track, slot.x, slot.z), outOfBounds: 0, edge, preVx: 0, preVz: 0, preVy: 0, rules, finished: false });

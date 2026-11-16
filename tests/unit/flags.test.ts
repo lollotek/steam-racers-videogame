@@ -15,11 +15,13 @@ describe('parseFlags', () => {
       laps: null,
       track: null,
       quick: false,
-      custom: false, grid: false,
+      custom: false, grid: false, vscale: 0.5,
       fullscreen: true,
     });
     expect(parseFlags('?custom').custom).toBe(true);
     expect(parseFlags('?grid').grid).toBe(true);
+    expect(parseFlags('?vscale=1').vscale).toBe(1);
+    expect(parseFlags('?vscale=9').vscale).toBe(1.5);
   });
 
   it('parses all flags and clamps values', () => {

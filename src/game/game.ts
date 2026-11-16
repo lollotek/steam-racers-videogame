@@ -270,7 +270,7 @@ export class Game {
     const parent = worldUi();
     const tag = new VehicleTag(parent, index);
     const gauges = new PlayerGauges(parent, index);
-    this.slots.push({ index, input: new PlayerInput(index, sources), camera: new FollowCamera(1), camYaw: 0, tag, gauges, banners: [] });
+    this.slots.push({ index, input: new PlayerInput(index, sources), camera: new FollowCamera(1, this.opts.flags.vscale), camYaw: 0, tag, gauges, banners: [] });
   }
 
   /** (Re)build the race: physics world, vehicles and their visuals. Racers 0..players-1 are humans. */
@@ -283,6 +283,7 @@ export class Game {
       this.trackFile,
       entrants.map((e, i) => ({ spec: specs[i]!, name: e.name, grid: this.setup.grid?.[i], tune: e.tune })),
       this.setup.seed + this.races++,
+      this.opts.flags.vscale,
     );
     this.buildViews(specs);
     if (this.features) this.features.sim = this.sim;
@@ -312,15 +313,18 @@ export class Game {
       v.damage.enabled = false;
     }
     this.views = [];
+    const k = this.opts.flags.vscale;
     specs.forEach((spec, i) => {
       const color = this.colorOf(i);
       const rig = spec === HOT_ROD ? buildHotRod(this.tex, color) : buildSteamTank(this.tex, color);
+      // Vehicle size factor (?vscale, units.ts): the model and its effects follow the physics.
+      rig.root.scale.setScalar(k);
       this.scene.add(rig.root);
       const exhaust = rig.stacks.map(() =>
-        this.particles.addEmitter({ kind: 'smoke', rate: 0, position: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 2.5, z: 0 }, spread: 0.4, life: [1.2, 2.4], size: [0.8, 3.2] }),
+        this.particles.addEmitter({ kind: 'smoke', rate: 0, position: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 2.5, z: 0 }, spread: 0.4 * k, life: [1.2, 2.4], size: [0.8 * k, 3.2 * k] }),
       );
-      const dust = this.particles.addEmitter({ kind: 'dust', rate: 0, position: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 0.8, z: 0 }, spread: 1.2, life: [0.8, 1.6], size: [1, 3.5] });
-      const damage = this.particles.addEmitter({ kind: 'smoke', rate: 0, position: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 3, z: 0 }, spread: 0.6, life: [1.5, 3], size: [1.2, 4.5] });
+      const dust = this.particles.addEmitter({ kind: 'dust', rate: 0, position: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 0.8, z: 0 }, spread: 1.2 * k, life: [0.8, 1.6], size: [k, 3.5 * k] });
+      const damage = this.particles.addEmitter({ kind: 'smoke', rate: 0, position: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 3, z: 0 }, spread: 0.6 * k, life: [1.5, 3], size: [1.2 * k, 4.5 * k] });
       this.views.push({ rig, spec, exhaust, dust, damage, fireAcc: 0, color, driver: null, scrapeAcc: 0 });
     });
   }
@@ -723,10 +727,10 @@ export class Game {
       const root = v.rig.root;
       root.quaternion.copy(this.qa);
       // Visual root sits at ground contact: body centre minus the spec offset along the body up axis.
-      this.tmp.set(0, -v.spec.visualOffsetY, 0).applyQuaternion(this.qa);
+      this.tmp.set(0, -r.vehicle.spec.visualOffsetY, 0).applyQuaternion(this.qa);
       root.position.set(a.x + (b.x - a.x) * alpha + this.tmp.x, a.y + (b.y - a.y) * alpha + this.tmp.y, a.z + (b.z - a.z) * alpha + this.tmp.z);
       const speed = r.vehicle.telemetry.forwardSpeed;
-      for (const w of v.rig.wheels) w.rotation.x += (speed * simDt) / 0.9;
+      for (const w of v.rig.wheels) w.rotation.x += (speed * simDt) / (0.9 * this.opts.flags.vscale);
       v.rig.banner.rotation.x = Math.sin(sim.clock * 6 + i) * 0.05 * Math.min(1, Math.abs(speed) / 10);
       root.updateMatrixWorld();
       v.rig.stacks.forEach((s, k) => {
@@ -741,21 +745,21 @@ export class Game {
       // Dust from the rear when drifting or on loose surfaces.
       const loose = LOOSE_SURFACES.has(r.vehicle.telemetry.surface);
       v.dust.position.x = root.position.x;
-      v.dust.position.y = root.position.y + 0.4;
+      v.dust.position.y = root.position.y + 0.4 * this.opts.flags.vscale;
       v.dust.position.z = root.position.z;
       v.dust.rate = r.vehicle.telemetry.drifting ? 30 : loose ? Math.abs(speed) * 1.2 : 0;
 
       // Hull condition (gameplay.md §6.1): smoke under 50 %, fire under 25 %, wreck smoulders.
       const cond = hullCondition(r.rules.hull);
       v.damage.position.x = root.position.x;
-      v.damage.position.y = root.position.y + 2.2;
+      v.damage.position.y = root.position.y + 2.2 * this.opts.flags.vscale;
       v.damage.position.z = root.position.z;
       v.damage.rate = cond === 'wreck' ? 18 : cond === 'fire' ? 12 : cond === 'smoke' ? 5 : 0;
       if ((cond === 'fire' || cond === 'wreck') && simDt > 0) {
         v.fireAcc += (cond === 'wreck' ? 10 : 18) * simDt;
         const n = Math.floor(v.fireAcc);
         v.fireAcc -= n;
-        if (n > 0) this.sparks.burst(root.position.x, root.position.y + 2, root.position.z, 0, 0, 0, 0, n, 0.35);
+        if (n > 0) this.sparks.burst(root.position.x, root.position.y + 2 * this.opts.flags.vscale, root.position.z, 0, 0, 0, 0, n, 0.35);
       }
 
       // Scraping a barricade: a continuous trail of sparks (or dust) from the contact point.

@@ -38,3 +38,10 @@ export const columnOfLane = (lane: number) =>
 export const boundOfLine = (b: number) => (2 * b - ROAD_SQUARES) / ROAD_SQUARES;
 /** Nearest column boundary of a hazard lane bound. */
 export const lineOfBound = (v: number) => Math.max(0, Math.min(ROAD_SQUARES, Math.round(((v + 1) * ROAD_SQUARES) / 2)));
+
+/**
+ * Default vehicle size factor (decided 2026-11-16): vehicles at half size, so a hot rod is one
+ * square long (2.5 m) and the track feels twice as big. Mass, speeds and paths unchanged
+ * (`scaleSpec` in vehicle-physics.ts; `?vscale=` overrides it).
+ */
+export const VEHICLE_SCALE = 0.5;

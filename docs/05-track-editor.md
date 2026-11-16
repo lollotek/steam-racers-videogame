@@ -25,7 +25,13 @@ The block-based level editor announced in doc 03 §7.3 (A3). A separate page of 
 | Edge band per side (barricade type) | 1 | 2.5 m | 2 cm |
 | Grid cell = module tile | 8 × 8 | 20 m | 16 × 16 cm |
 
-Scale **1:125**. The 3D vehicles (about 2 × 5 m) are one square wide and two long: on the board a miniature takes one square (abstraction).
+Scale **1:125**.
+
+**Vehicle size (decided 2026-11-16):** the vehicles are drawn and simulated at **half size** (`VEHICLE_SCALE` = 0.5 in `units.ts`; `?vscale=0.25..1.5` overrides it, `?vscale=1` = the original size). A hot rod is then 1 × 2.5 m, i.e. **one square**, and the track feels twice as big. `scaleSpec` (`vehicle-physics.ts`) scales the collider, wheels and suspension geometry; mass, engine, gear speeds and top speed are unchanged, and the vehicles follow the same paths in metres as before:
+
+- inertia follows the size (∝ k²) and the steering angle is reduced so the turning radius stays the same (tan a′ = k · tan a), so the yaw response and the AI lines do not change;
+- the suspension is stiffer (stiffness / k, damping / √k) so sag and travel shrink with the car (with the old stiffness the half-size chassis hit the start of the kickers);
+- the models, their smoke / dust / damage effects and the camera distances and look-ahead are multiplied by the same factor (the camera tunables are the full-size values).
 
 Why a square 8 × 8 module rather than a 6 × 8 straight: tiles must rotate and a loop closed in the editor must close on the table, so every tile is the same square module; with 6 road squares filling the whole cell a size-1 curve would have a zero inner radius. With the module, a size-1 curve has the road between 1 and 7 squares from its corner and the edge bands on 0–1 and 7–8.
 
@@ -48,6 +54,7 @@ The standard tracks were migrated on 2026-11-14 (width 14 → 15, crate lanes sn
 | E3 | 3D preview panel (world builder + orbit camera, rebuilt on change) | — |
 | E4 | Tileset view: orthographic render per piece, print sheets with cut marks, layout sheet | — |
 | **G1** | Tabletop grid: units, width 15, crate columns, hazard columns / squares, start grid, editor squares and edge bands, `?grid` | ✅ |
+| **G2** | Half-size vehicles (`VEHICLE_SCALE`, `?vscale`) | ✅ |
 | E5 | Dev-only "save to project" + Cup configuration file | — |
 
 ## 4. Tile layout model (`src/editor/layout.ts`)
