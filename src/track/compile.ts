@@ -107,6 +107,8 @@ export interface CompiledTrack {
   spawn: SpawnSlot[];
   /** Occupied grid cells "cx,cz" (for validation and the future editor). */
   cells: Set<string>;
+  /** Piece index owning each occupied cell (the editor's tileset, doc 05 §9). */
+  cellPiece: Map<string, number>;
   bounds: { minX: number; maxX: number; minZ: number; maxZ: number; minY: number; maxY: number };
   pickups: CompiledPickup[];
   hazards: CompiledHazard[];
@@ -191,6 +193,7 @@ export function compileTrack(file: TrackFile, spacing = 1): CompiledTrack {
   const c: Cursor = { x: cell / 2, z: 0, h: 0, level: 0 };
   const raw: Omit<TrackSample, 's' | 'grade'>[] = [];
   const cells = new Set<string>();
+  const cellPiece = new Map<string, number>();
   const checkpoints: number[] = [];
   /** First raw sample index and nominal length of each piece. */
   const pieceStart: number[] = [];
@@ -201,6 +204,7 @@ export function compileTrack(file: TrackFile, spacing = 1): CompiledTrack {
     for (const k of pieceCells(c, p, cell)) {
       if (cells.has(k)) throw new TrackError(`Piece ${idx} (${p.type}) overlaps cell ${k}`);
       cells.add(k);
+      cellPiece.set(k, idx);
     }
     if (p.surface && !SURFACES.includes(p.surface)) throw new TrackError(`Piece ${idx}: unknown surface "${p.surface}"`);
     if (p.type === 'start' && (p.rise || p.crest)) throw new TrackError('The start piece must be level');
@@ -397,6 +401,7 @@ export function compileTrack(file: TrackFile, spacing = 1): CompiledTrack {
     lineS,
     spawn,
     cells,
+    cellPiece,
     bounds: { minX: Math.min(...xs), maxX: Math.max(...xs), minZ: Math.min(...zs), maxZ: Math.max(...zs), minY: Math.min(...ys), maxY: Math.max(...ys) },
     pickups,
     hazards,

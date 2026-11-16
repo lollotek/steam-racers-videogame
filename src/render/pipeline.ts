@@ -34,6 +34,7 @@ import {
   output,
   pass,
   perspectiveDepthToViewZ,
+  orthographicDepthToViewZ,
   renderOutput,
   screenUV,
   select,
@@ -67,7 +68,7 @@ export class InkPipeline {
   constructor(
     private renderer: WebGPURenderer,
     scene: Scene,
-    camera: Camera,
+    private camera: Camera,
     private tex: { noise: Texture; paper: Texture },
   ) {
     this.pipeline = new RenderPipeline(renderer);
@@ -94,6 +95,8 @@ export class InkPipeline {
   }
 
   setCamera(camera: Camera): void {
+    if ((camera as { isOrthographicCamera?: boolean }).isOrthographicCamera !== (this.camera as { isOrthographicCamera?: boolean }).isOrthographicCamera) this.dirty = true;
+    this.camera = camera;
     this.scenePass.camera = camera;
   }
 
@@ -125,7 +128,10 @@ export class InkPipeline {
     const depthTex: N = sp.getTextureNode('depth');
     const view = tunables.get<string>('post.debugView');
 
-    const viewZAt = (uv: N): N => perspectiveDepthToViewZ(depthTex.sample(uv).x, cameraNear, cameraFar);
+    // Orthographic cameras (the editor's tileset renders, doc 05 §9) store linear depth.
+    const ortho = (this.camera as { isOrthographicCamera?: boolean }).isOrthographicCamera === true;
+    const toViewZ = ortho ? orthographicDepthToViewZ : perspectiveDepthToViewZ;
+    const viewZAt = (uv: N): N => toViewZ(depthTex.sample(uv).x, cameraNear, cameraFar);
     const normalAt = (uv: N): N => unpackRGBToNormal(normalTex.sample(uv).xyz);
 
     const edges = Fn(() => {

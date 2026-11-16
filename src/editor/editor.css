@@ -475,3 +475,156 @@ dd {
   margin: 0;
   text-align: right;
 }
+
+/* Tileset view and print sheets (doc 05 §9) */
+.tileset {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  background: var(--ink);
+}
+.tileset-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 10px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+.tileset-bar strong {
+  color: var(--brass);
+  margin-right: 6px;
+}
+.tileset-bar .sep {
+  width: 1px;
+  height: 22px;
+  background: var(--line);
+  margin: 0 4px;
+}
+.tileset-bar .grow {
+  flex: 1;
+}
+.tileset-bar .play:not(:disabled) {
+  background: var(--fire);
+  color: var(--ink);
+  border-color: var(--fire);
+  font-weight: bold;
+}
+.muted {
+  color: var(--muted);
+}
+.tileset-body {
+  flex: 1;
+  overflow: auto;
+  padding: 14px;
+}
+.tileset-body > p {
+  max-width: 760px;
+}
+.thumbs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+.thumbs figure {
+  margin: 0;
+}
+.thumbs figure.layout {
+  grid-column: span 2;
+  grid-row: span 2;
+}
+.thumbs img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+}
+.thumbs figcaption {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.sheets {
+  display: none;
+}
+
+@media print {
+  html,
+  body,
+  #editor,
+  .editor {
+    height: auto;
+    overflow: visible;
+    background: #fff;
+    display: block;
+  }
+  .editor > :not(.tileset),
+  .tileset-bar,
+  .tileset-body {
+    display: none !important;
+  }
+  .tileset {
+    position: static;
+    display: block;
+    background: #fff;
+  }
+  .sheets {
+    display: block;
+  }
+  .sheet {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-evenly;
+    break-after: page;
+    overflow: hidden;
+    color: #000;
+  }
+  .sheet.a4 {
+    width: 210mm;
+    height: 297mm;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .sheet.a3 {
+    width: 420mm;
+    height: 297mm;
+  }
+  .sheet:last-child {
+    break-after: auto;
+  }
+  .layout-sheet img {
+    max-width: 190mm;
+    max-height: 277mm;
+  }
+  .sheet.a3.layout-sheet img {
+    max-width: 400mm;
+  }
+  .slot {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14mm;
+  }
+  .module {
+    position: relative;
+  }
+  .module img {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  .cutmarks {
+    position: absolute;
+    overflow: visible;
+  }
+  .caption {
+    font: 9pt var(--font);
+    color: #444;
+  }
+}

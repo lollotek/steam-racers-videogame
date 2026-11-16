@@ -8,6 +8,7 @@ import { docFromFile, newDoc, toTrackFile } from './layout';
 import { GridView } from './GridView';
 import { Inspector, WORLD_LABEL } from './Inspector';
 import { PreviewPanel, previewOpen } from './Preview';
+import { TilesetView, tilesetOpen } from './TilesetView';
 import {
   PALETTE,
   appendAtEnd,
@@ -77,6 +78,10 @@ export function EditorApp() {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
       if (el.closest('input, textarea, select')) return;
+      if (tilesetOpen.value) {
+        if (e.key === 'Escape') tilesetOpen.value = false;
+        return;
+      }
       const k = e.key.toLowerCase();
       if ((e.ctrlKey || e.metaKey) && k === 'z') {
         e.preventDefault();
@@ -160,7 +165,9 @@ export function EditorApp() {
         <button class={previewOpen.value ? 'on' : ''} onClick={() => (previewOpen.value = !previewOpen.value)} title="P" data-testid="preview-toggle">
           3D preview
         </button>
-        <button disabled title="Coming in phase E4">Show tileset</button>
+        <button onClick={() => (tilesetOpen.value = true)} disabled={!v.compiled} data-testid="tileset-open" title="Printable module tiles">
+          Show tileset
+        </button>
       </header>
 
       <nav class="palette">
@@ -210,6 +217,7 @@ export function EditorApp() {
       </main>
 
       <Inspector />
+      {tilesetOpen.value && <TilesetView />}
     </div>
   );
 }

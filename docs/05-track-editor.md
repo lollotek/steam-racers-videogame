@@ -1,6 +1,6 @@
 # 05 — Track editor (milestone M5)
 
-The block-based level editor announced in doc 03 §7.3 (A3). A separate page of the game, `/mapeditor/`, where tracks are built by placing tiles freely on the grid, checked live against the compiler and the Cup rules, saved as the same JSON the game reads, test-driven in a new tab, previewed in 3D and (later) printed as tabletop tiles.
+The block-based level editor announced in doc 03 §7.3 (A3). A separate page of the game, `/mapeditor/`, where tracks are built by placing tiles freely on the grid, checked live against the compiler and the Cup rules, saved as the same JSON the game reads, test-driven in a new tab, previewed in 3D and printed as tabletop tiles.
 
 ## 1. Decisions (owner, 2026-11-14)
 
@@ -52,7 +52,7 @@ The standard tracks were migrated on 2026-11-14 (width 14 → 15, crate lanes sn
 | **E1** | Page, tile layout model, 2D grid editor, inspector, live validation and stats, save / load / standard tracks / autosave, world selector, undo / redo | ✅ |
 | **E2** | Play button → new tab, `?custom` boot in the game | ✅ |
 | **E3** | 3D preview panel (world builder + orbit camera, rebuilt on change) | ✅ |
-| E4 | Tileset view: orthographic render per piece, print sheets with cut marks, layout sheet | — |
+| **E4** | Tileset view: orthographic render per module, Grid / Lanes squares, print sheets with cut marks, layout sheet | ✅ |
 | **G1** | Tabletop grid: units, width 15, crate columns, hazard columns / squares, start grid, editor squares and edge bands, `?grid` | ✅ |
 | **G2** | Half-size vehicles (`VEHICLE_SCALE`, `?vscale`) | ✅ |
 | E5 | Dev-only "save to project" + Cup configuration file | — |
@@ -89,7 +89,7 @@ Storage keys: `steamRacers.editor.doc` (autosave of the last track), `steamRacer
 
 | Area | Content |
 |---|---|
-| Top bar | New, Open file…, Standard track (list of `src/tracks`), Save JSON, Undo / Redo, **Play**, **3D preview** (`P`), Show tileset (E4) |
+| Top bar | New, Open file…, Standard track (list of `src/tracks`), Save JSON, Undo / Redo, **Play**, **3D preview** (`P`), **Show tileset** (§9) |
 | Palette (left) | Start, straight, ramp (straight with rise), crest, curve 1 / 2 / 3, jump 2 / 3 |
 | 3D preview (centre right, when open) | §8 |
 | Grid (centre) | Top view (north up, the driver's right on the right): road coloured by surface, edge bands one square wide coloured by barricade type, squares and column lines when zoomed in, travel arrows, jump gaps, crates, hazards, landmark footprints, level per tile; the open end and the ghost of the tile being placed (green = free, red = blocked) |
@@ -117,15 +117,18 @@ The **3D preview** button (or `P`) splits the centre area: grid on the left, 3D 
 - Fog starts as in a race around the view target and is pushed out with the zoom, so the whole track stays readable from far away; the sun's shadow box grows with the zoom too.
 - `src/editor/preview3d.ts` (renderer, scene, orbit camera) is loaded on first open (its own chunk); `src/editor/Preview.tsx` is the panel. Closing the panel frees the renderer and the scene.
 
-## 9. Tileset (E4, plan)
+## 9. Tileset (E4)
 
-- One **module tile (16 × 16 cm) per grid cell** of each piece, numbered in race order (`#7` = 7th piece; multi-cell pieces `#7 · 2/3`). Cells of a big curve that the road does not touch are not printed.
-- Rendered orthographically from above with the ink pipeline at 300 dpi: 16 cm = 1890 px per module (2 cm = 236 px per square). Includes the dressing inside the module, crates, hazard markings, travel arrow, level badge and the piece number; the edge bands show the barricade type.
-- **Squares on curves — option for playtests** (setting in the tileset view):
-  - **Grid** (current board game rules): the module's 8 × 8 square grid printed over the road everywhere, curves included; a vehicle stands on whatever square it covers.
-  - **Lanes**: on curves, the 6 columns become 6 concentric lanes, each split into spaces about one square long along its arc (inner lanes have fewer spaces); straights are unchanged.
-- Print sheets: tiles with 3 mm bleed and cut marks via the browser's print to PDF; one module per A4, two per A3.
-- Layout sheet: the whole track from above with the numbered tiles.
+**Show tileset** opens a full-screen view of the printable tiles of the current track (it needs a track that compiles; the 3D preview closes, the two share the ink uniforms). `Esc` or ✕ goes back.
+
+- **Modules** (`moduleTiles` in `src/editor/tileset.ts`, pure, unit tested): one module tile (16 × 16 cm = 8 × 8 squares) per grid cell of each piece, numbered in race order: `#7` for a one-cell piece, `#7 · 2/3` for the cells of a longer one in travel order. A cell is printed when the road or its edge bands touch it (the compiler's `cellPiece` tells which piece owns each cell): straights and curves 1–2 print every cell, a curve 3 prints 8 of its 9 (not the inner corner).
+- **Render** (`src/editor/tileset-render.ts`, loaded on demand): a separate offscreen `WebGPURenderer` with the game's ink pipeline and `buildWorld` (no rain, no particles, hazards idle), an **orthographic camera** straight from above (the pipeline reads linear depth for orthographic cameras), north up and the driver's right of a northbound piece on the right, as in the grid. No fog, vignette or grain (seams must match); line weight scaled to metres as in a race view. Each module: 166 mm with the 3 mm bleed at **300 dpi = 1961 px**, read back from a render target, then the board markings drawn in 2D, saved as JPEG. The dressing uses the 3D preview seed. About 1 s per module on a desktop GPU.
+- **Markings**: squares (double stroke, dark with a light core), lane borders along the road, edge bands with their barricade type (tag in the barricade colour), travel arrow, hazard letters (V, X, C, S), piece number (top left) and level (`L+1`, top right, when not 0).
+- **Squares on curves** (toolbar, playtest option):
+  - **Grid** (current board game rules): the module's 8 × 8 square grid, clipped to the road and edge bands, everywhere, curves included; a vehicle stands on whatever square it covers.
+  - **Lanes**: the 6 columns and the 2 edge bands become concentric lanes, each split into spaces about one square long along its own arc (inner lanes of a curve have fewer spaces); on straights this is the same as the grid.
+- **Print** (browser print → PDF, at 100 % scale, no "fit to page"): a **layout sheet** first (the whole track from above with the module outlines and numbers, `7·2` = piece 7, cell 2), then the modules with cut marks at the 16 cm trim and a caption: **A4 × 1** (portrait, one module per page) or **A3 × 2** (landscape, two per page). The page size is set with `@page`.
+- `?tilepx=200` renders small tiles (quick checks of the sheets; the printed size stays 16 cm). `node tools/print/tileset-pdf.mjs out.pdf [a4|a3] [track-id]` saves the PDF of a standard track from the dev server (headless Chromium).
 
 ## 10. Cup and build (E5, plan)
 
@@ -134,4 +137,5 @@ A Vite dev-server plugin exposes `POST /__editor/save` (dev only) that writes `s
 ## 11. Tests
 
 - `tests/unit/editor-layout.test.ts`: chain → tiles → chain round trip for every standard track (pieces identical, compiled cells identical), backward traversal and normalisation, broken / open / unconnected cases, compiler error mapping.
-- `tests/e2e/editor.spec.ts`: `/mapeditor/` loads without errors, a standard track loads and validates, Play stores the track, the 3D preview builds the world, rebuilds on a world change and frees its canvas when closed.
+- `tests/e2e/editor.spec.ts`: `/mapeditor/` loads without errors, a standard track loads and validates, Play stores the track, the 3D preview builds the world, rebuilds on a world change and frees its canvas when closed, the tileset lists the modules and renders two of them (small, software WebGL in CI).
+- `tests/unit/tileset.test.ts`: modules per piece (curve 3 → 8, labels), standard tracks (one module per printed cell, inside the footprint, race order), Lanes / Grid square lines.

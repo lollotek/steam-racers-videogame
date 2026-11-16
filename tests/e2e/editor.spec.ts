@@ -33,23 +33,54 @@ test.describe('track editor', () => {
   });
 
   test('3D preview builds the world and follows edits', async ({ page }) => {
+    test.slow(); // software WebGL in CI
     const errors: string[] = [];
     page.on('pageerror', (e) => errors.push(e.message));
     await page.goto('/mapeditor/');
     await page.getByTestId('standard').selectOption('foundry-01');
     await page.getByTestId('preview-toggle').click();
     await expect(page.getByTestId('preview-canvas')).toBeVisible();
-    await expect(page.getByTestId('preview-state')).toContainText('drag to orbit', { timeout: 30_000 });
+    await expect(page.getByTestId('preview-state')).toContainText('drag to orbit', { timeout: 90_000 });
     const built = () => page.evaluate(() => (window as unknown as { __preview3d?: { biome: string | null } }).__preview3d?.biome ?? null);
-    await expect.poll(built, { timeout: 30_000 }).toBe('foundry');
+    await expect.poll(built, { timeout: 90_000 }).toBe('foundry');
     // A change of world rebuilds the scene.
     await page.getByTestId('world').selectOption('elven');
-    await expect.poll(built, { timeout: 30_000 }).toBe('elven');
+    await expect.poll(built, { timeout: 90_000 }).toBe('elven');
     // Closing frees the renderer (its canvas leaves the page).
     await page.keyboard.press('Escape');
     await page.locator('.grid').click({ position: { x: 5, y: 5 } });
     await page.keyboard.press('p');
     await expect(page.getByTestId('preview-canvas')).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+
+  test('tileset lists the modules and renders them', async ({ page }) => {
+    test.slow();
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.goto('/mapeditor/');
+    await page.getByTestId('standard').selectOption('foundry-01');
+    await page.getByTestId('tileset-open').click();
+    await expect(page.getByTestId('tileset')).toContainText('32 modules of 16 × 16 cm');
+    // Full 300 dpi renders are slow on the software WebGL of CI: render two modules small.
+    const result = await page.evaluate(async () => {
+      // Vite serves the sources in dev; paths in variables keep TypeScript out of it.
+      const paths = ['/src/editor/tileset.ts', '/src/editor/tileset-render.ts'];
+      type Tile = { tile: { label: string }; url: string };
+      const { moduleTiles } = (await import(/* @vite-ignore */ paths[0]!)) as { moduleTiles(t: unknown): unknown[] };
+      const { renderTileset } = (await import(/* @vite-ignore */ paths[1]!)) as {
+        renderTileset(t: unknown, m: unknown[], o: object, p: () => void, c: () => boolean): Promise<{ tiles: Tile[]; layout: string }>;
+      };
+      const t = (window as unknown as { __trackEditor: { validation: { value: { compiled: unknown } } } }).__trackEditor.validation.value.compiled;
+      const mods = moduleTiles(t).slice(0, 2);
+      const r = await renderTileset(t, mods, { squares: 'lanes', seed: 1, px: 128 }, () => {}, () => false);
+      const sizes = await Promise.all([...r.tiles.map((x) => x.url), r.layout].map(async (u) => (await fetch(u)).blob().then((b) => b.size)));
+      return { labels: r.tiles.map((x) => x.tile.label), sizes };
+    });
+    expect(result.labels).toEqual(['#1 · 1/3', '#1 · 2/3']);
+    for (const s of result.sizes) expect(s).toBeGreaterThan(1000);
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('tileset')).toHaveCount(0);
     expect(errors).toEqual([]);
   });
 
