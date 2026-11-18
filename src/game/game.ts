@@ -40,7 +40,7 @@ import { createDriver, driveRacer, type DriverState } from '../ai/driver';
 import type { RuleEvent } from '../sim/race-rules';
 import { hullCondition } from '../rules/hull';
 import { coneHalfAngle, isLocked } from '../rules/cannon';
-import { PlayerGauges, type GaugeFrame } from '../ui/gauges';
+import { PlayerGauges, type BoilerTestView, type GaugeFrame, type ScreenPoint } from '../ui/gauges';
 import { Minimap } from '../ui/minimap';
 import type { Banner, ResultRow } from '../ui/state';
 import type { ViewportRect } from '../ui/vehicle-tag';
@@ -60,6 +60,9 @@ import { boilerCal } from '../rules/boiler';
 export { IDENTITY_COLORS };
 
 tunables.registerGroup('hud', [
+  { key: 'hud.valveRadius', type: 'number', default: 5, min: 1, max: 15, step: 0.1, unit: 'm', label: 'Boiler stall ring: radius (× vehicle scale)' },
+  { key: 'hud.valveWidth', type: 'number', default: 1.1, min: 0.2, max: 4, step: 0.05, unit: 'm', label: 'Boiler stall ring: width (× vehicle scale)' },
+  { key: 'hud.valveFlash', type: 'number', default: 0.45, min: 0, max: 2, step: 0.05, unit: 's', label: 'Boiler stall ring: outcome flash' },
   { key: 'hud.vehicleTag', type: 'boolean', default: true, label: 'Gear + steam under vehicle' },
   { key: 'hud.tagOffset', type: 'number', default: 2.6, min: 0, max: 8, step: 0.1, unit: 'm', label: 'Tag distance below the vehicle (screen down)' },
   { key: 'hud.cornerTag', type: 'boolean', default: true, label: 'Corner warning above vehicle' },
@@ -111,6 +114,8 @@ export interface PlayerSlot {
   /** Centre prompts: start test, boiler test, reticle, under fire. */
   gauges: PlayerGauges;
   banners: Banner[];
+  /** Valve ring of the last boiler test, kept on screen briefly to flash the outcome. */
+  valve: { kind: 'red' | 'burst'; notch: number; half: number; flash: 'hit' | 'miss' | null; until: number } | null;
 }
 
 interface RacerView {
@@ -287,7 +292,7 @@ export class Game {
     const tag = new VehicleTag(parent, index);
     const cornerTag = new CornerTag(parent, index);
     const gauges = new PlayerGauges(parent, index);
-    this.slots.push({ index, input: new PlayerInput(index, sources), camera: new FollowCamera(1, this.opts.flags.vscale), camYaw: 0, tag, cornerTag, hudLine: null, hudScanAt: 0, gauges, banners: [] });
+    this.slots.push({ index, input: new PlayerInput(index, sources), camera: new FollowCamera(1, this.opts.flags.vscale), camYaw: 0, tag, cornerTag, hudLine: null, hudScanAt: 0, gauges, banners: [], valve: null });
   }
 
   /** (Re)build the race: physics world, vehicles and their visuals. Racers 0..players-1 are humans. */
@@ -602,10 +607,15 @@ export class Game {
         break;
       }
       case 'boilerTest':
-        this.banner(e.racer, e.kind === 'burst' ? 'BOILER AT BURSTING POINT!' : 'RED ZONE: PRESSURE FULL', 'warn');
+        this.banner(e.racer, e.kind === 'burst' ? 'BOILER STALL: BURSTING POINT!' : 'BOILER STALL: PRESSURE FULL', 'warn');
         break;
       case 'boiler': {
         const r = sim.racers[e.racer]!;
+        const slot = this.slots.find((s) => s.index === e.racer);
+        if (slot?.valve) {
+          slot.valve.flash = e.outcome === 'contained' || e.outcome === 'valves' ? 'hit' : 'miss';
+          slot.valve.until = performance.now() + t('hud.valveFlash') * 1000;
+        }
         const { x, z } = r.vehicle.curr;
         if (e.outcome === 'contained') this.banner(e.racer, 'PRESSURE CONTAINED', 'good');
         if (e.outcome === 'emergency') this.banner(e.racer, 'EMERGENCY VALVES: −3 GEARS', 'bad');
@@ -862,6 +872,53 @@ export class Game {
     return { x: vp.left + (v.x * 0.5 + 0.5) * vp.width, y: vp.top + (-v.y * 0.5 + 0.5) * vp.height };
   }
 
+  /**
+   * Boiler stall ring (rules/boiler.ts): half a ring on the ground around the player's vehicle, on
+   * the side facing the camera, swept from screen left to screen right. Projected per frame so it
+   * keeps the ground perspective in both camera modes; only the owner sees it.
+   */
+  private valveRing(s: PlayerSlot, vp: ViewportRect): BoilerTestView | null {
+    const bt = this.sim.racers[s.index]!.rules.boiler.test;
+    if (bt) s.valve = { kind: bt.kind, notch: bt.notch, half: bt.half, flash: null, until: Infinity };
+    else if (s.valve && (s.valve.flash === null || performance.now() > s.valve.until)) s.valve = null;
+    const ring = s.valve;
+    if (!ring) return null;
+    const view = this.views[s.index]!;
+    const c = view.rig.root.position;
+    const k = view.rig.root.scale.x;
+    const cam = s.camera.camera;
+    // Towards the camera on the ground, and the screen-right direction across it.
+    let nx = cam.position.x - c.x;
+    let nz = cam.position.z - c.z;
+    const nl = Math.hypot(nx, nz) || 1;
+    nx /= nl;
+    nz /= nl;
+    let rx = -nz;
+    let rz = nx;
+    const right = this.tmp.setFromMatrixColumn(cam.matrixWorld, 0);
+    if (rx * right.x + rz * right.z < 0) {
+      rx = -rx;
+      rz = -rz;
+    }
+    const radius = tunables.get<number>('hud.valveRadius') * k;
+    const half = (tunables.get<number>('hud.valveWidth') * k) / 2;
+    const inner: ScreenPoint[] = [];
+    const outer: ScreenPoint[] = [];
+    const N = 40;
+    for (let i = 0; i <= N; i++) {
+      const a = (Math.PI * i) / N;
+      // u = 0 screen left, 0.5 nearest the camera, 1 screen right.
+      const dx = -rx * Math.cos(a) + nx * Math.sin(a);
+      const dz = -rz * Math.cos(a) + nz * Math.sin(a);
+      const pi = this.toScreen(s, c.x + dx * (radius - half), c.y, c.z + dz * (radius - half), vp);
+      const po = this.toScreen(s, c.x + dx * (radius + half), c.y, c.z + dz * (radius + half), vp);
+      if (!pi || !po) return null;
+      inner.push(pi);
+      outer.push(po);
+    }
+    return { needle: bt ? bt.needle : null, notch: ring.notch, half: ring.half, kind: ring.kind, inner, outer, flash: ring.flash };
+  }
+
   /** Centre prompts of one player (start test, boiler test, reticle, under fire). */
   private gaugeFrame(s: PlayerSlot, vp: ViewportRect): GaugeFrame | null {
     const sim = this.sim;
@@ -871,8 +928,7 @@ export class Game {
     const st = rr.start;
     const start =
       sim.phase === 'countdown' ? { needle: st.needle, lo: st.lo, hi: st.hi, tol: st.tol, red: tunables.get<number>('start.redLine') } : null;
-    const bt = rr.boiler.test;
-    const boiler = bt ? { needle: bt.needle, notch: bt.notch, half: bt.half, kind: bt.kind } : null;
+    const boiler = this.valveRing(s, vp);
     let reticle: GaugeFrame['reticle'] = null;
     const c = rr.cannon;
     if (c.target >= 0 && sim.phase !== 'countdown' && !r.finished) {

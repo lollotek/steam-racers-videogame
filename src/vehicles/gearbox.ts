@@ -3,6 +3,8 @@
  * No throttle: the vehicle drives itself towards the speed of the current gear.
  *   steam push  → short extra acceleration + one gear up, paid with PV from the boiler (rules/boiler.ts)
  *   gear down   → tap: one gear down; hold: brake, then reverse when stopped
+ * While the boiler is stalled (reliability test) taps do not change gear: they open the valve
+ * (rules/boiler.ts). Holding gear down still brakes.
  */
 import type { ActionFrame } from '../input/actions';
 import { tunables } from '../core/tunables';
@@ -48,9 +50,9 @@ export function createGearbox(boiler: BoilerState = createBoiler(5, 0)): Gearbox
   return { gear: 1, steer: 0, pushTimer: 0, pushCooldown: 0, gearDownHeld: 0, boiler, pushBoost: 1, noPush: 0 };
 }
 
-/** True when a steam push would fire now (no cooldown, no calm time, no boiler test, enough PV). */
+/** True when a steam push would fire now (no cooldown, no calm time, boiler not stalled, enough PV). */
 export function canPush(g: GearboxState): boolean {
-  return g.pushCooldown === 0 && g.noPush === 0 && canSpend(g.boiler, tunables.get<number>('boiler.pushCost'));
+  return g.pushCooldown === 0 && g.noPush === 0 && !g.boiler.stalled && canSpend(g.boiler, tunables.get<number>('boiler.pushCost'));
 }
 
 /** A free push (start test): no PV, no gear change. */
@@ -89,7 +91,7 @@ export function stepGearbox(
       out.gearChanged = true;
     }
   }
-  if (input.pressed.gearDown && g.gear > 1) {
+  if (input.pressed.gearDown && g.gear > 1 && !g.boiler.stalled) {
     // Downshifting from 4th up gives steam back (gameplay.md §5.1).
     if (g.gear >= 4) addPv(g.boiler, t('boiler.downshiftRefund'));
     g.gear--;

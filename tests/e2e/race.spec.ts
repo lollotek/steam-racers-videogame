@@ -46,7 +46,7 @@ test('M3 rules: start test meter, hull / cannon / boiler HUD, minimap, firing sp
   // Pause shows the controls reference.
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('controls-help')).toBeVisible();
-  await expect(page.getByTestId('controls-help')).toContainText('Right Shift');
+  await expect(page.getByTestId('controls-help')).toContainText('Num 0');
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('pause-overlay')).toHaveCount(0);
   await expect.poll(async () => (await snapshot(page)).players[0]!.start, { timeout: 60_000 }).not.toBeNull();

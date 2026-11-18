@@ -152,14 +152,14 @@ La caldaia è la risorsa centrale. Valori nel gruppo `boiler`; il manometro dell
 
 **Dove va**: la spinta a vapore (1 PV per tocco: un'accelerazione extra per `n` secondi, con un'attesa `x` tra una spinta e l'altra), i cambi di marcia, il cannone a vapore, alcune carte.
 
-**Zona rossa**: oltre CAL la caldaia si riempie di pressione (più lentamente con AFF alta). In zona rossa la spinta è più forte, ma quando la pressione è piena, o i PV arrivano a 2 × CAL, parte il **test di Affidabilità**: un ago percorre il manometro e bisogna premere sfiato quando passa sulla tacca verde (più larga con AFF).
+**Zona rossa**: oltre CAL la caldaia si riempie di pressione (più lentamente con AFF alta). In zona rossa la spinta è più forte, ma quando la pressione è piena, o i PV arrivano a 2 × CAL, parte il **test di Affidabilità**: la caldaia va in **stallo**. Il cambio si blocca e i tasti marcia (su o giù, indifferente) diventano la leva della valvola. Sotto il mezzo compare un semicerchio a terra, sul lato rivolto alla telecamera: un ago lo percorre da sinistra a destra e bisogna premere un tasto marcia quando passa sulla tacca verde (più larga con AFF). Nei primissimi istanti del test i tasti marcia sono ignorati, così un cambio già partito non spreca il test. Durante lo stallo non si sale né si scala (niente PV restituiti), niente spinte; tenendo premuto giù si frena comunque. A test finito l'anello lampeggia verde o rosso.
 
 | Situazione | Tacca presa | Tacca mancata |
 | :---- | :---- | :---- |
 | zona rossa | pressione contenuta, niente di male | valvole d'emergenza: PV a zero, −3 marce, 1 PF |
 | 2 × CAL | le valvole cedono: PV a zero, frenata forte, 2 PF | **esplosione**: fermo per `STALL` s, CAL −2, niente generazione passiva, si torna in 1ª, metà dei PF massimi persi, onda d'urto sui vicini |
 
-**Sfiato**: fuori dal test, il tasto sfiato scarica vapore; la nuvola resta dietro il mezzo e allarga il cono di chi spara attraverso. Lo stesso tasto arma anche la Difesa Attiva (capitolo 7.3): l'ordine è test → difesa → sfiato.
+**Sfiato**: il tasto sfiato scarica vapore; la nuvola resta dietro il mezzo e allarga il cono di chi spara attraverso. Lo stesso tasto arma anche la Difesa Attiva (capitolo 7.3): l'ordine è difesa → sfiato. Durante il test di Affidabilità il tasto sfiato non fa nulla (la valvola si apre con i tasti marcia).
 
 ## 6\. Scocca, urti e barricate
 
@@ -300,7 +300,7 @@ Un circuito con l'istruttore, senza rivali; le lezioni ricaricano la caldaia da 
 | Sezione | Lezioni |
 | :---- | :---- |
 | Prima del VIA | Briefing, Partenza |
-| Guida (senza armi) | Accelera, Sterza, Marce, Curve (leggere l'avviso sopra il mezzo e scalare alla marcia consigliata), Drift, Spinta a vapore, Zona rossa (sfiato), Salto, Urti e PF (relitto parcheggiato), Barricate, Speroni, Riposiziona, Telecamera |
+| Guida (senza armi) | Accelera, Sterza, Marce, Curve (leggere l'avviso sopra il mezzo e scalare alla marcia consigliata), Drift, Spinta a vapore, Zona rossa (stallo caldaia e sfiato), Salto, Urti e PF (relitto parcheggiato), Barricate, Speroni, Riposiziona, Telecamera |
 | Fuoco | Cannone (sul relitto), Olio, Torretta, Difesa (il relitto spara a salve), Carte, Eventi |
 | Fine | guida libera fino al traguardo |
 
@@ -313,9 +313,9 @@ Fuori dalla Scuola armi e carte sono sempre attive. Anche nelle altre modalità 
 | Azione | Giocatore 1 (tastiera) | Giocatore 2 (tastiera) | Gamepad |
 | :---- | :---- | :---- | :---- |
 | Sterza | ← → | A D | levetta sinistra |
-| Spinta a vapore e sali di marcia | &nbsp;↑&nbsp; | W | A |
-| Scala (tenuto: freno, retromarcia) | ↓ | S | LT |
-| Sfiato · test della caldaia · difesa | Shift destro | Shift sinistro | B |
+| Spinta a vapore e sali di marcia · stallo caldaia: valvola | &nbsp;↑&nbsp; | W | A |
+| Scala (tenuto: freno, retromarcia) · stallo caldaia: valvola | ↓ | S | LT |
+| Sfiato · difesa | `/` (il tasto `-` sulla tastiera italiana) / Num 0 | Q | B |
 | Arma anteriore | Ctrl destro / `.` | X | RB |
 | Arma posteriore | Fine | Z | LB |
 | Torretta | Canc | V | Y |

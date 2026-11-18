@@ -820,21 +820,78 @@ body:has(.ui-root.split) .minimap {
   border-radius: 6px;
   text-align: center;
 }
-.boiler-meter {
-  top: 74%;
-  border-color: var(--pip-red);
-}
-.boiler-meter.burst {
-  animation: blink 0.25s steps(2) infinite;
-}
 .meter-label {
   font-size: 12px;
   font-weight: 900;
   letter-spacing: 2px;
   margin-bottom: 4px;
 }
-.boiler-meter .meter-label {
+/* Boiler stall: valve ring on the ground under the vehicle (RTS selection style). */
+.valve-ring {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  stroke-linejoin: round;
+}
+.valve-track {
+  fill: rgba(27, 18, 16, 0.55);
+  stroke: var(--pip-red);
+  stroke-width: 2.5px;
+  filter: drop-shadow(0 0 4px rgba(255, 60, 40, 0.8));
+}
+.valve-fill {
+  fill: rgba(255, 120, 80, 0.35);
+}
+.valve-notch {
+  fill: #6fbf4a;
+  stroke: #d8ffb8;
+  stroke-width: 1.5px;
+  filter: drop-shadow(0 0 5px #8fff5a);
+}
+.valve-needle {
+  stroke: var(--steam);
+  stroke-width: 5px;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 2px var(--ink));
+}
+.valve-ring.burst .valve-track {
+  animation: blink 0.25s steps(2) infinite;
+  stroke-width: 4px;
+}
+.valve-ring.hit .valve-track,
+.valve-ring.hit .valve-notch {
+  fill: rgba(111, 191, 74, 0.7);
+  stroke: #d8ffb8;
+  animation: none;
+}
+.valve-ring.miss .valve-track {
+  fill: rgba(220, 40, 30, 0.7);
+  animation: none;
+}
+.valve-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 2px;
   color: var(--pip-red);
+  text-shadow: 0 0 3px var(--ink), 0 0 3px var(--ink);
+  will-change: transform;
+}
+.valve-label.burst {
+  animation: blink 0.25s steps(2) infinite;
+}
+.valve-label.hit {
+  color: #8fff5a;
+  animation: none;
+}
+.valve-label.miss {
+  animation: none;
 }
 .meter-track {
   position: relative;

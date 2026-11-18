@@ -143,7 +143,8 @@ export class RaceRules {
     const v = r.vehicle;
     const rr = r.rules;
     if (v.wrecked) return;
-    const res = stepBoiler(rr.boiler, dt, cmd.pressed.vent, this.rng);
+    const valve = cmd.pressed.steamPush || cmd.pressed.gearDown;
+    const res = stepBoiler(rr.boiler, dt, { vent: cmd.pressed.vent, valve }, this.rng);
     if (res.testStarted) this.events.push({ type: 'boilerTest', racer: r.index, kind: res.testStarted });
     if (res.vented) {
       const h = v.heading();
@@ -235,6 +236,7 @@ export class RaceRules {
       r.vehicle.gearbox.gear = 1;
       r.vehicle.gearbox.pushTimer = 0;
       r.rules.boiler.test = null;
+      r.rules.boiler.stalled = false;
       this.events.push({ type: 'wreck', racer: r.index });
     }
     return lost;

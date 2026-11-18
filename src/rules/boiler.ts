@@ -4,13 +4,17 @@
  *   PV come from ignition, passive generation (slower above CAL), downshifts from 4th up.
  *   PV go to steam pushes (gear changes) and, later, weapons and cards.
  *   Above CAL the boiler builds pressure (slower with AFF); a full gauge, or PV at 2 × CAL, starts
- *   the reliability test: a needle sweeps the gauge and VENT must be pressed on the green notch.
+ *   the reliability test: the boiler STALLS (gearbox locked) while a needle sweeps a ring on the
+ *   ground under the vehicle; a gear key (up or down) opens the valve and must land on the green notch.
+ *   Presses in the first moments of the test are ignored (grace), so a gear change already on the
+ *   way does not waste the test.
  *
  *   | situation | notch hit                       | notch missed                                         |
  *   | red zone  | pressure contained              | emergency valves: PV 0, −3 gears, 1 PF               |
  *   | 2 × CAL   | valves give: PV 0, hard brake, 2 PF | explosion: stall, CAL −2, no regen, 1st, ½ PF lost |
  *
- * Outside the test VENT dumps steam: one PV and some pressure, leaving a cloud behind.
+ * Outside the test VENT dumps steam: one PV and some pressure, leaving a cloud behind. During the
+ * test VENT does nothing (it stays free for the active defence).
  */
 import { tunables } from '../core/tunables';
 import type { Rng } from '../core/rng';
@@ -25,6 +29,7 @@ tunables.registerGroup('boiler', [
   { key: 'boiler.pressureTime', type: 'number', default: 6, min: 0.5, max: 30, step: 0.5, unit: 's', label: 'Red zone: time to full pressure (1 PV over, AFF 0)' },
   { key: 'boiler.affPressure', type: 'number', default: 0.15, min: 0, max: 0.5, step: 0.01, label: 'Pressure slowdown per AFF' },
   { key: 'boiler.testTime', type: 'number', default: 1.4, min: 0.3, max: 5, step: 0.05, unit: 's', label: 'Reliability test: needle sweep' },
+  { key: 'boiler.testGrace', type: 'number', default: 0.2, min: 0, max: 1, step: 0.05, unit: 's', label: 'Reliability test: gear presses ignored at start' },
   { key: 'boiler.notchWidth', type: 'number', default: 0.16, min: 0.02, max: 0.6, step: 0.01, label: 'Reliability test: notch width' },
   { key: 'boiler.affNotch', type: 'number', default: 0.025, min: 0, max: 0.2, step: 0.005, label: 'Notch width per AFF' },
   { key: 'boiler.ventPressure', type: 'number', default: 0.35, min: 0, max: 1, step: 0.05, label: 'Vent: pressure released' },
@@ -67,10 +72,12 @@ export interface BoilerState {
   /** Seconds without passive generation (after an explosion). */
   noRegen: number;
   ventCooldown: number;
+  /** Stall: a test is running or resolved this step. The gearbox ignores gear presses. */
+  stalled: boolean;
 }
 
 export function createBoiler(cal: number, aff: number): BoilerState {
-  return { pv: tunables.get<number>('boiler.startPv'), regen: 0, pressure: 0, baseCal: cal, calLoss: 0, aff, test: null, noRegen: 0, ventCooldown: 0 };
+  return { pv: tunables.get<number>('boiler.startPv'), regen: 0, pressure: 0, baseCal: cal, calLoss: 0, aff, test: null, noRegen: 0, ventCooldown: 0, stalled: false };
 }
 
 export function boilerCal(b: BoilerState): number {
@@ -89,6 +96,13 @@ export function addPv(b: BoilerState, pv: number): void {
   b.pv = Math.min(boilerCal(b) * 2, b.pv + pv);
 }
 
+export interface BoilerInput {
+  /** VENT pressed this step (edge): dumps steam outside a test. */
+  vent: boolean;
+  /** A gear key pressed this step (edge): opens the valve during a test. */
+  valve: boolean;
+}
+
 export interface BoilerStepResult {
   /** Set on the step a reliability test resolves. */
   outcome: BoilerOutcome | null;
@@ -100,10 +114,17 @@ export interface BoilerStepResult {
 
 /**
  * One fixed step of the boiler.
- * @param vent VENT pressed this step (edge)
+ * @param input VENT / gear keys pressed this step (edges)
  * @param rng gameplay stream (notch position)
  */
-export function stepBoiler(b: BoilerState, dt: number, vent: boolean, rng: Rng): BoilerStepResult {
+export function stepBoiler(b: BoilerState, dt: number, input: BoilerInput, rng: Rng): BoilerStepResult {
+  const res = stepInner(b, dt, input, rng);
+  b.stalled = b.test !== null || res.outcome !== null;
+  return res;
+}
+
+function stepInner(b: BoilerState, dt: number, input: BoilerInput, rng: Rng): BoilerStepResult {
+  const { vent } = input;
   const t = (k: string) => tunables.get<number>(k);
   const res: BoilerStepResult = { outcome: null, testStarted: null, vented: false };
   const cal = boilerCal(b);
@@ -114,8 +135,9 @@ export function stepBoiler(b: BoilerState, dt: number, vent: boolean, rng: Rng):
     const test = b.test;
     test.needle += dt / t('boiler.testTime');
     const onNotch = Math.abs(test.needle - test.notch) <= test.half;
-    if (vent || test.needle >= 1) {
-      res.outcome = resolveTest(b, test.kind, vent && onNotch);
+    const valve = input.valve && test.needle * t('boiler.testTime') > t('boiler.testGrace');
+    if (valve || test.needle >= 1) {
+      res.outcome = resolveTest(b, test.kind, valve && onNotch);
       b.test = null;
       b.ventCooldown = t('boiler.ventCooldown');
     }

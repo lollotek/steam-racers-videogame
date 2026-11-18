@@ -13,7 +13,7 @@ export const P1_KEYS: KeyBindings = {
   buttons: {
     steamPush: ['ArrowUp'],
     gearDown: ['ArrowDown'],
-    vent: ['ShiftRight'],
+    vent: ['Slash', 'Numpad0'],
     fireFront: ['ControlRight', 'Period'],
     fireRear: ['End'],
     fireTurret: ['Delete'],
@@ -32,7 +32,7 @@ export const P2_KEYS: KeyBindings = {
   buttons: {
     steamPush: ['KeyW'],
     gearDown: ['KeyS'],
-    vent: ['ShiftLeft'],
+    vent: ['KeyQ'],
     fireFront: ['KeyX'],
     fireRear: ['KeyZ'],
     fireTurret: ['KeyV'],
