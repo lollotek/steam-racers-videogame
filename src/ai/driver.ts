@@ -30,7 +30,7 @@ export interface DriverState {
   rng: Rng;
   /** Start test: needle level this driver aims for (error included). */
   startAim: number;
-  /** Needle position at which the driver presses VENT during the current boiler test. */
+  /** Needle position at which the driver opens the valve (gear key) during the current boiler test. */
   ventAt: number | null;
   /** Hazard cycle keys (id × 1000 + cycle) this driver decided to respect / ignore. */
   heeded: number;
@@ -90,15 +90,16 @@ export function driveRacer(d: DriverState, sim: RaceSim): ActionFrame {
   avoid(d, sim);
   const f = drive(d.ap, sim.track, sim.pose(d.index), g, maxSpeed);
 
-  // Boiler: on a reliability test, press VENT near the notch (error shrinks with skill).
+  // Boiler: on a reliability test (stall), tap a gear key near the notch (error shrinks with skill).
   const b = r.rules.boiler;
   if (b.test) {
     d.ventAt ??= b.test.notch + d.rng.range(-1, 1) * b.test.half * (0.3 + 2.2 * (1 - skill));
+    f.pressed.steamPush = false;
+    f.pressed.gearDown = false;
     if (b.test.needle >= d.ventAt) {
-      f.pressed.vent = true;
+      f.pressed.steamPush = true;
       d.ventAt = null;
     }
-    f.pressed.steamPush = false;
   } else {
     d.ventAt = null;
     if (b.pv > boilerCal(b) && b.pressure > tunables.get<number>('ai.ventPressure') && b.ventCooldown === 0) f.pressed.vent = true;

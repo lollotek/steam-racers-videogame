@@ -11,6 +11,20 @@ const frame = (mut: (f: ActionFrame) => void = () => {}) => {
 };
 
 describe('gearbox (gameplay.md §5.1)', () => {
+  it('boiler stall: gear taps do not shift or push, holding gear down still brakes', () => {
+    const g = createGearbox();
+    g.gear = 4;
+    g.boiler.pv = 5;
+    g.boiler.stalled = true;
+    expect(stepGearbox(g, frame((f) => (f.pressed.steamPush = true)), DT, 10, 30).pushed).toBe(false);
+    stepGearbox(g, frame((f) => (f.pressed.gearDown = true)), DT, 10, 30);
+    expect(g.gear).toBe(4);
+    expect(g.boiler.pv).toBe(5); // no downshift refund either
+    let o = stepGearbox(g, frame(), DT, 10, 30);
+    for (let k = 0; k < 30; k++) o = stepGearbox(g, frame((f) => (f.held.gearDown = true)), DT, 10, 30);
+    expect(o.braking).toBe(true);
+  });
+
   it('targets the current gear speed without any throttle', () => {
     const g = createGearbox();
     expect(stepGearbox(g, frame(), DT, 0, 30).targetRatio).toBe(GEAR_RATIOS[0]);

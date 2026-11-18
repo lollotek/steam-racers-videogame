@@ -12,15 +12,18 @@ import foundry from '../../src/tracks/foundry-01.json';
 
 const DT = 1 / 60;
 const t = (k: string) => tunables.get<number>(k);
+const NONE = { vent: false, valve: false };
+const VALVE = { vent: false, valve: true };
+const VENT = { vent: true, valve: false };
 
 describe('boiler (gameplay.md §5.2)', () => {
   it('generates passively, slower above CAL', () => {
     const b = createBoiler(5, 0);
     b.pv = 0;
     const rng = new Rng(1);
-    for (let i = 0; i < 60 * t('boiler.regenTime') * 5 + 2; i++) stepBoiler(b, DT, false, rng);
+    for (let i = 0; i < 60 * t('boiler.regenTime') * 5 + 2; i++) stepBoiler(b, DT, NONE, rng);
     expect(b.pv).toBe(5);
-    for (let i = 0; i < 60 * t('boiler.regenTime'); i++) stepBoiler(b, DT, false, rng);
+    for (let i = 0; i < 60 * t('boiler.regenTime'); i++) stepBoiler(b, DT, NONE, rng);
     expect(b.pv).toBe(5); // above CAL needs 1 / redRegenFactor times longer
   });
 
@@ -29,18 +32,22 @@ describe('boiler (gameplay.md §5.2)', () => {
     const rng = new Rng(2);
     b.pv = 7;
     let started = null;
-    for (let i = 0; i < 60 * 20 && !started; i++) started = stepBoiler(b, DT, false, rng).testStarted;
+    for (let i = 0; i < 60 * 20 && !started; i++) started = stepBoiler(b, DT, NONE, rng).testStarted;
     expect(started).toBe('red');
     const test = b.test!;
-    // Wait for the needle to reach the notch, then vent.
+    expect(b.stalled).toBe(true);
+    // Wait for the needle to reach the notch, then open the valve (gear key).
     let out = null;
     for (let i = 0; i < 600 && !out; i++) {
       const on = Math.abs(test.needle + DT / t('boiler.testTime') - test.notch) < test.half * 0.5;
-      out = stepBoiler(b, DT, on, rng).outcome;
+      out = stepBoiler(b, DT, on ? VALVE : NONE, rng).outcome;
     }
     expect(out).toBe('contained');
+    expect(b.stalled).toBe(true); // still stalled on the step it resolves: the gear press is spent
     expect(b.pressure).toBe(0);
     expect(b.test).toBeNull();
+    stepBoiler(b, DT, NONE, rng);
+    expect(b.stalled).toBe(false);
   });
 
   it('missing the notch: emergency valves (red) or explosion (2 × CAL)', () => {
@@ -48,27 +55,42 @@ describe('boiler (gameplay.md §5.2)', () => {
     const b = createBoiler(5, 0);
     b.pv = 6;
     b.pressure = 1;
-    stepBoiler(b, DT, false, rng);
+    stepBoiler(b, DT, NONE, rng);
     expect(b.test?.kind).toBe('red');
     let out = null;
-    while (!out) out = stepBoiler(b, DT, false, rng).outcome; // never vents
+    while (!out) out = stepBoiler(b, DT, NONE, rng).outcome; // never vents
     expect(out).toBe('emergency');
     expect(b.pv).toBe(0);
 
     const c = createBoiler(5, 0);
     c.pv = 10;
-    stepBoiler(c, DT, false, rng);
+    stepBoiler(c, DT, NONE, rng);
     expect(c.test?.kind).toBe('burst');
-    expect(stepBoiler(c, DT, true, rng).outcome).toBe('explosion'); // vent at once = off the notch
+    // Past the grace, well before the notch: off the notch.
+    for (let i = 0; i < Math.ceil((t('boiler.testGrace') + 0.05) * 60); i++) stepBoiler(c, DT, NONE, rng);
+    expect(stepBoiler(c, DT, VALVE, rng).outcome).toBe('explosion');
     expect(boilerCal(c)).toBe(5 - t('boiler.explosionCal'));
     expect(c.noRegen).toBeGreaterThan(0);
+  });
+
+  it('gear presses in the grace window are ignored; VENT does nothing during the test', () => {
+    const rng = new Rng(5);
+    const b = createBoiler(5, 0);
+    b.pv = 6;
+    b.pressure = 1;
+    stepBoiler(b, DT, NONE, rng);
+    expect(b.test).not.toBeNull();
+    expect(stepBoiler(b, DT, VALVE, rng).outcome).toBeNull(); // grace
+    expect(stepBoiler(b, DT, VENT, rng).outcome).toBeNull();
+    expect(b.pv).toBe(6);
+    expect(b.test).not.toBeNull();
   });
 
   it('VENT outside a test dumps one PV and some pressure', () => {
     const b = createBoiler(5, 0);
     b.pv = 6;
     b.pressure = 0.5;
-    const r = stepBoiler(b, DT, true, new Rng(4));
+    const r = stepBoiler(b, DT, VENT, new Rng(4));
     expect(r.vented).toBe(true);
     expect(b.pv).toBe(5);
     expect(b.pressure).toBeLessThan(0.5);

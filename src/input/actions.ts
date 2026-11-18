@@ -2,9 +2,9 @@
  * Player actions (doc 03 §12, gameplay.md Appendix). The simulation only sees `ActionFrame`s.
  */
 export const BUTTONS = [
-  'steamPush', // steam push + gear up
-  'gearDown', // gear down; held = brake, then reverse
-  'vent', // vent / boiler test / active defence
+  'steamPush', // steam push + gear up; boiler stalled = open the valve
+  'gearDown', // gear down; held = brake, then reverse; boiler stalled = open the valve
+  'vent', // dump steam / active defence
   'fireFront',
   'fireRear',
   'fireTurret',

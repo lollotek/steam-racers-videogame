@@ -18,9 +18,9 @@ interface Row {
 
 const ROWS: Row[] = [
   { label: 'Steer', steer: true, touch: 'Left pad' },
-  { label: 'Steam push + gear up', hint: '1 PV', button: 'steamPush', touch: 'STEAM' },
-  { label: 'Gear down', hint: 'hold: brake, reverse', button: 'gearDown', touch: 'GEAR −' },
-  { label: 'Vent', hint: 'boiler test, dump steam', button: 'vent', touch: 'VENT' },
+  { label: 'Steam push + gear up', hint: '1 PV · boiler stall: open the valve', button: 'steamPush', touch: 'STEAM' },
+  { label: 'Gear down', hint: 'hold: brake, reverse · boiler stall: open the valve', button: 'gearDown', touch: 'GEAR −' },
+  { label: 'Vent', hint: 'dump steam', button: 'vent', touch: 'VENT' },
   { label: 'Front cannon', button: 'fireFront', touch: 'FIRE' },
   { label: 'Reposition', button: 'reposition', touch: '⟲' },
   { label: 'Pause', button: 'pause', touch: 'II' },
@@ -36,6 +36,8 @@ const KEY_NAMES: Record<string, string> = {
   ControlRight: 'Right Ctrl',
   ControlLeft: 'Left Ctrl',
   Period: '.',
+  Slash: '/',
+  Numpad0: 'Num 0',
   Backspace: 'Backspace',
   Escape: 'Esc',
 };
