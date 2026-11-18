@@ -20,7 +20,8 @@ import { PRINT_SQUARE_CM, SQUARE } from '../track/units';
 import { buildWorld } from '../world/build';
 import { disposeScene } from '../world/kit';
 import { BARRICADE_COLOR, HAZARD_LETTER } from './geometry';
-import { BAND, type ModuleTile, type Seg, type SquareMode, roadOutline, squareLines } from './tileset';
+import { BAND, type CornerSign, type ModuleTile, type Seg, type SquareMode, cornerSigns, roadOutline, squareLines } from './tileset';
+import { CORNER_ICONS, SEVERITY_COLOR } from '../track/corners';
 
 /** Print resolution and bleed (doc 05 §9). */
 export const DPI = 300;
@@ -355,11 +356,69 @@ function drawMarks(ctx: CanvasRenderingContext2D, track: CompiledTrack, m: Modul
     ctx.textBaseline = 'middle';
     ctx.fillText(HAZARD_LETTER[h.kind], u, v + r * 0.05);
   }
+  // Corner signs whose centre falls in this module.
+  for (const sign of cornerSigns(track)) if (Math.floor(sign.x / cell) === m.cx && Math.floor(sign.z / cell) === m.cz) drawCornerSign(ctx, sign, map, ppm);
   // Number (top left, inside the trim) and level (top right).
   const inset = (BLEED_MM * M_PER_MM + 0.3) * ppm;
   const size = Math.round(0.8 * ppm);
   label(ctx, m.label, inset, inset, size);
   if (m.level) label(ctx, `L${m.level > 0 ? '+' : ''}${m.level}`, ctx.canvas.width - inset, inset, size, 'right');
+}
+
+/**
+ * Corner sign painted on the road, read by a driver arriving: dark plate with a border in the
+ * severity colour, the corner icon (as on the HUD tag) and 1–3 chevrons, top towards the travel.
+ */
+function drawCornerSign(ctx: CanvasRenderingContext2D, sign: CornerSign, map: Map2, ppm: number): void {
+  const [u, v] = map(sign.x, sign.z);
+  const [u2, v2] = map(sign.x + sign.tx, sign.z + sign.tz);
+  const color = SEVERITY_COLOR[sign.severity];
+  const W = 4.6 * ppm;
+  const H = 3.2 * ppm;
+  ctx.save();
+  ctx.translate(u, v);
+  // Local −y along the travel, +x = the driver's right (the image map is a rotation, not a mirror).
+  ctx.rotate(Math.atan2(v2 - v, u2 - u) + Math.PI / 2);
+  ctx.fillStyle = 'rgba(27, 18, 16, 0.88)';
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 0.22 * ppm;
+  ctx.beginPath();
+  ctx.roundRect(-W / 2, -H / 2, W, H, 0.4 * ppm);
+  ctx.fill();
+  ctx.stroke();
+  const mirror = sign.turn === 'L' ? -1 : 1;
+  // Icon (24-unit box) on the left half.
+  const s = (2.6 * ppm) / 24;
+  ctx.save();
+  ctx.translate(-W / 2 + 0.25 * ppm + (mirror < 0 ? 24 * s : 0), -H / 2 + 0.3 * ppm);
+  ctx.scale(s * mirror, s);
+  const icon = CORNER_ICONS[sign.kind];
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.stroke(new Path2D(icon.path));
+  ctx.beginPath();
+  icon.head.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+  // Chevrons on the right half, pointing into the turn (the icon keeps the left half).
+  ctx.lineWidth = 0.28 * ppm;
+  ctx.lineCap = 'butt';
+  ctx.lineJoin = 'miter';
+  const cw = 0.55 * ppm;
+  const cx0 = 1.2 * ppm - ((sign.severity - 1) * cw) / 2;
+  for (let k = 0; k < sign.severity; k++) {
+    const x = cx0 + k * cw;
+    ctx.beginPath();
+    ctx.moveTo(x - 0.25 * ppm * mirror, -0.6 * ppm);
+    ctx.lineTo(x + 0.25 * ppm * mirror, 0);
+    ctx.lineTo(x - 0.25 * ppm * mirror, 0.6 * ppm);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 function drawLayout(ctx: CanvasRenderingContext2D, modules: readonly ModuleTile[], map: Map2, cell: number, name: string): void {

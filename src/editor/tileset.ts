@@ -7,7 +7,9 @@
  * - Cells of a piece that the road and its edge bands do not touch are not printed (the inner
  *   corner of a big curve).
  */
-import type { CompiledTrack, TrackSample } from '../track/compile';
+import { type CompiledTrack, type TrackSample, sampleAt } from '../track/compile';
+import { type CornerKind, classifyCorners } from '../track/corners';
+import type { Turn } from '../track/track-format';
 import { EDGE_SQUARES, ROAD_SQUARES, SQUARE } from '../track/units';
 
 export interface ModuleTile {
@@ -187,4 +189,35 @@ export function roadOutline(track: CompiledTrack): { left: [number, number][]; r
     rightRing.push([b.x, b.z]);
   }
   return { left, right: rightRing };
+}
+
+/** Corner warning printed on the road before each corner (the tabletop twin of the corner tag). */
+export interface CornerSign {
+  /** Centre on the centre line (world metres) and travel direction there. */
+  x: number;
+  z: number;
+  tx: number;
+  tz: number;
+  kind: CornerKind;
+  turn: Turn;
+  severity: 1 | 2 | 3;
+}
+
+/** Distance of a sign before the corner entry (m): the end of the module before it, clear of its travel arrow. */
+export const SIGN_BEFORE = 5;
+
+/**
+ * One sign per corner, `SIGN_BEFORE` metres before its entry (none over a jump gap). On the start
+ * line it moves between the line and the corner.
+ */
+export function cornerSigns(track: CompiledTrack): CornerSign[] {
+  const out: CornerSign[] = [];
+  for (const c of classifyCorners(track)) {
+    let s = c.s0 - SIGN_BEFORE;
+    if (Math.abs(s - track.lineS) < 2) s = (track.lineS + c.s0) / 2;
+    const p = sampleAt(track, s);
+    if (p.feature === 'gap') continue;
+    out.push({ x: p.x, z: p.z, tx: p.tx, tz: p.tz, kind: c.kind, turn: c.turn, severity: c.severity });
+  }
+  return out;
 }

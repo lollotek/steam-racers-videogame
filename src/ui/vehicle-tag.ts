@@ -13,6 +13,21 @@ export interface ViewportRect {
   height: number;
 }
 
+/**
+ * Screen point (px) `below` metres straight down the screen from a world anchor, or null when the
+ * anchor is off screen. Negative `below` goes up. `v`/`up` are scratch vectors.
+ */
+export function screenBelow(anchor: { x: number; y: number; z: number }, below: number, camera: Camera, vp: ViewportRect, v: Vector3, up: Vector3): { x: number; y: number } | null {
+  v.set(anchor.x, anchor.y, anchor.z).project(camera);
+  if (!(v.z < 1 && Math.abs(v.x) < 1.2 && Math.abs(v.y) < 1.2)) return null;
+  const x = vp.left + (v.x * 0.5 + 0.5) * vp.width;
+  const ndcY = v.y;
+  // Pixels per metre at the vehicle, measured along the camera's up axis (screen vertical).
+  up.setFromMatrixColumn(camera.matrixWorld, 1).add(v.set(anchor.x, anchor.y, anchor.z)).project(camera);
+  const pxPerM = Math.abs(up.y - ndcY) * 0.5 * vp.height;
+  return { x, y: vp.top + (-ndcY * 0.5 + 0.5) * vp.height + below * pxPerM };
+}
+
 export class VehicleTag {
   readonly el: HTMLDivElement;
   private gearEl: HTMLSpanElement;
@@ -45,17 +60,10 @@ export class VehicleTag {
    *   stays centred under the vehicle whatever its heading or the camera angle
    */
   update(anchor: { x: number; y: number; z: number }, below: number, camera: Camera, vp: ViewportRect, gear: number, steam: SteamReadout, visible: boolean): void {
-    this.v.set(anchor.x, anchor.y, anchor.z).project(camera);
-    const onScreen = visible && this.v.z < 1 && Math.abs(this.v.x) < 1.2 && Math.abs(this.v.y) < 1.2;
-    this.el.style.display = onScreen ? '' : 'none';
-    if (!onScreen) return;
-    const x = vp.left + (this.v.x * 0.5 + 0.5) * vp.width;
-    const ndcY = this.v.y;
-    // Pixels per metre at the vehicle, measured along the camera's up axis (screen vertical).
-    this.up.setFromMatrixColumn(camera.matrixWorld, 1).add(this.v.set(anchor.x, anchor.y, anchor.z)).project(camera);
-    const pxPerM = Math.abs(this.up.y - ndcY) * 0.5 * vp.height;
-    const y = vp.top + (-ndcY * 0.5 + 0.5) * vp.height + below * pxPerM;
-    this.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, 0)`;
+    const at = visible ? screenBelow(anchor, below, camera, vp, this.v, this.up) : null;
+    this.el.style.display = at ? '' : 'none';
+    if (!at) return;
+    this.el.style.transform = `translate(${at.x.toFixed(1)}px, ${at.y.toFixed(1)}px) translate(-50%, 0)`;
 
     if (gear !== this.lastGear) {
       this.lastGear = gear;

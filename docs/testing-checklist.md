@@ -97,6 +97,20 @@ Fed by the real boiler since M3 (rules/boiler.ts; CAL per vehicle in `stats.*`, 
 - [ ] `?players=2`: each player has its own tag under its own vehicle.
 - [ ] `hud.vehicleTag` (debug) hides the tag; `hud.tagOffset` moves it.
 
+### Corner warning (above the vehicle)
+
+- [ ] `?track=foundry-01`: after the start straight a tag above the vehicle shows an S turning left, two chevrons, an advised gear; its bar fills while approaching.
+- [ ] Entering the first bend of the S, the tag switches to the right bend still to come; past it, it hides.
+- [ ] Wide (arc, brass), tight (90° arrow, orange) and hairpin (U, red) icons; left turns are mirrored.
+- [ ] Above the advised gear the number blinks red; scaling down to it turns it back to brass.
+- [ ] No tag in the countdown, when stopped, reversing or going the wrong way.
+- [ ] Phone (or vehicle high on screen): the tag moves under the gear + steam tag instead of covering the HUD.
+- [ ] `?players=2`: each player has its own corner tag. `hud.cornerTag` (debug) hides it; `hud.cornerLead` changes how early it appears.
+- [ ] Desktop: the tag stays above the vehicle unless the vehicle is right under the HUD strip.
+- [ ] Chevron boards on the outside of tight bends (2 orange) and hairpins (3 red), none on wide bends; the chevrons point the way of the turn whether the camera sees the front or the back.
+- [ ] `world.cornerBoards` off + restart: no boards.
+- [ ] Editor → Show tileset (`foundry-01`): the module before each corner has a sign on the road (icon + chevrons in the severity colour), top towards the travel arrow; the first one sits between the start line and the S, not on the line.
+
 ## M3 — Race vertical slice
 
 Goal (doc 03 §18): complete 3-lap race vs 3 AI at target FPS on both device classes. Values are placeholders (doc 03 §19, A7): tune them in `?debug` (groups `stats`, `start`, `boiler`, `hull`, `weapons`, `ai`) and check with `npx tsx tools/sim/run.ts --preset file.json --seed N`.

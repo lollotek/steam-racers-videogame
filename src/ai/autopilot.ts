@@ -7,6 +7,7 @@ import { type ActionFrame, emptyFrame } from '../input/actions';
 import { sampleAt, type CompiledTrack } from '../track/compile';
 import { GEAR_RATIOS, type GearboxState, canPush } from '../vehicles/gearbox';
 import { tunables } from '../core/tunables';
+import { gearForRadius } from '../track/corners';
 
 tunables.registerGroup('ai', [
   { key: 'ai.lookAhead', type: 'number', default: 7, min: 2, max: 30, step: 0.5, unit: 'm', label: 'Look-ahead base' },
@@ -67,13 +68,7 @@ export function drive(ap: AutopilotState, track: CompiledTrack, pose: Pose, gb: 
   const scan = t('ai.brakeLookAhead');
   for (let d = 0; d <= scan; d += 4) maxK = Math.max(maxK, Math.abs(sampleAt(track, pose.s + d).curvature));
   const safe = maxK > 0 ? Math.sqrt(t('ai.lateralAccel') / maxK) : Infinity;
-  let wanted = 1;
-  for (let g = GEAR_RATIOS.length; g >= 1; g--) {
-    if (GEAR_RATIOS[g - 1]! * maxSpeed <= safe) {
-      wanted = g;
-      break;
-    }
-  }
+  let wanted = maxK > 0 ? gearForRadius(1 / maxK, maxSpeed, t('ai.lateralAccel')) : GEAR_RATIOS.length;
   // Jumps (doc 04 A5): carry enough speed over the lip, no braking on the approach or in the air.
   // Not much more than needed either: a long flight overshoots the landing into the next piece.
   let jumping = false;
