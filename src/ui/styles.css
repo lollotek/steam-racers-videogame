@@ -257,6 +257,94 @@ body {
   opacity: 0.55;
 }
 
+/* Above-vehicle corner warning (src/ui/corner-tag.ts) */
+.ctag {
+  --sev: var(--brass);
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  padding: 3px 5px 4px;
+  pointer-events: none;
+  will-change: transform;
+  background: rgba(27, 18, 16, 0.72);
+  border: 2px solid var(--sev);
+  border-radius: 6px;
+}
+.ctag[data-severity='2'] {
+  --sev: var(--fire);
+}
+.ctag[data-severity='3'] {
+  --sev: #e0442c;
+}
+.ctag-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.ctag-icon {
+  width: 24px;
+  height: 24px;
+  fill: var(--sev);
+  stroke: var(--sev);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ctag-icon polygon {
+  stroke-width: 1;
+}
+.ctag-icon path {
+  fill: none;
+}
+.ctag-icon.left {
+  transform: scaleX(-1);
+}
+.ctag-chev {
+  min-width: 18px;
+  font-size: 17px;
+  font-weight: 900;
+  line-height: 18px;
+  letter-spacing: -2px;
+  color: var(--sev);
+}
+.ctag-gear {
+  min-width: 18px;
+  padding: 0 4px;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 18px;
+  text-align: center;
+  color: var(--ink);
+  background: linear-gradient(#c9a35d, var(--brass));
+  border: 2px solid var(--ink);
+  border-radius: 4px;
+}
+.ctag-gear.over {
+  color: #fff4e0;
+  background: #b3261a;
+  animation: ctag-blink 0.35s steps(2, jump-none) infinite;
+}
+@keyframes ctag-blink {
+  50% {
+    background: #5e130c;
+  }
+}
+.ctag-bar {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.ctag-bar > div {
+  width: 0;
+  height: 100%;
+  background: var(--sev);
+}
+
 /* Under-vehicle tag: gear + steam pips (src/ui/vehicle-tag.ts) */
 .vtag {
   position: absolute;

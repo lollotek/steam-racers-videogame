@@ -9,6 +9,7 @@ import {
   BoxGeometry,
   BufferGeometry,
   CatmullRomCurve3,
+  CanvasTexture,
   Color,
   CylinderGeometry,
   DirectionalLight,
@@ -24,6 +25,7 @@ import {
   PointLight,
   Quaternion,
   Scene,
+  SRGBColorSpace,
   SphereGeometry,
   TorusGeometry,
   Vector3,
@@ -36,6 +38,7 @@ import type { EmitterOptions } from '../render/fx/particles';
 import { buildDressing, type Reserved } from '../game/dressing';
 import { sampleAt, type CompiledTrack } from '../track/compile';
 import { JUMP, type Surface } from '../track/track-format';
+import { SEVERITY_COLOR, classifyCorners } from '../track/corners';
 import type { BiomeDef, SurfaceLook, WorldContext } from './biome';
 import { RainField, checkerTexture, ink, lavaMaterial, ribbonFromSamples, skirtFromSamples, textTexture, viewHeightLimit } from './kit';
 
@@ -310,6 +313,7 @@ export function buildWorld(biome: BiomeDef, tex: ProceduralSet, seed: number, tr
   }
 
   buildBarricades(scene, tex, track);
+  buildCornerBoards(scene, track);
 
   // --- Context for the biome hooks ---------------------------------------------------
   const emitters: EmitterOptions[] = [];
@@ -561,4 +565,111 @@ function buildBarricades(scene: Scene, tex: ProceduralSet, track: CompiledTrack)
   inst(railGeo, ironMat, L.rail!);
   inst(postGeo, ironMat, L.railPost!);
   inst(crystalGeo, crystalMat, L.crystal!);
+}
+
+tunables.registerGroup('world', [
+  { key: 'world.cornerBoards', type: 'boolean', default: true, label: 'Chevron boards on tight corners (rebuild)' },
+]);
+
+/** Painted chevron board: `count` chevrons in `color`, pointing right (left when `flip`). */
+function chevronTexture(count: number, color: string, flip: boolean): CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 160;
+  const ctx = c.getContext('2d')!;
+  ctx.fillStyle = '#231915';
+  ctx.fillRect(0, 0, 256, 160);
+  ctx.strokeStyle = '#1B1210';
+  ctx.lineWidth = 12;
+  ctx.strokeRect(0, 0, 256, 160);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 26;
+  ctx.lineCap = 'butt';
+  ctx.lineJoin = 'miter';
+  if (flip) {
+    ctx.translate(256, 0);
+    ctx.scale(-1, 1);
+  }
+  const w = 52;
+  const x0 = 128 - ((count - 1) * w) / 2 - 18;
+  for (let k = 0; k < count; k++) {
+    const x = x0 + k * w;
+    ctx.beginPath();
+    ctx.moveTo(x, 30);
+    ctx.lineTo(x + 40, 80);
+    ctx.lineTo(x, 130);
+    ctx.stroke();
+  }
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  // Grime.
+  for (let i = 0; i < 30; i++) {
+    ctx.fillStyle = `rgba(122,74,46,${(0.05 + (i % 5) * 0.03).toFixed(2)})`;
+    ctx.fillRect((i * 97) % 256, (i * 53) % 160, 6 + (i % 4) * 5, 3 + (i % 3) * 4);
+  }
+  const t = new CanvasTexture(c);
+  t.colorSpace = SRGBColorSpace;
+  return t;
+}
+
+/**
+ * Chevron boards on the outside of tight bends and hairpins (track/corners.ts), the in-world twin of
+ * the corner tag: two chevrons (orange) on tight bends, three (red) on hairpins, pointing into the
+ * turn, facing the approaching driver, behind the barricade.
+ */
+function buildCornerBoards(scene: Scene, track: CompiledTrack): void {
+  if (!tunables.get<boolean>('world.cornerBoards')) return;
+  const up = new Vector3(0, 1, 0);
+  const one = new Vector3(1, 1, 1);
+  const boards = new Map<string, Matrix4[]>();
+  const posts: Matrix4[] = [];
+  const spacing = 6;
+  for (const corner of classifyCorners(track)) {
+    for (const bend of corner.bends) {
+      if (bend.kind === 'wide') continue;
+      const key = `${bend.kind}${bend.turn}`;
+      const list = boards.get(key) ?? [];
+      boards.set(key, list);
+      // Outside of the turn: driver's left on a right turn.
+      const side = bend.turn === 'R' ? -1 : 1;
+      const len = bend.s1 - bend.s0;
+      const n = Math.max(2, Math.round(len / spacing));
+      for (let k = 0; k <= n; k++) {
+        const d = bend.s0 + (k / n) * len;
+        const sp = sampleAt(track, d);
+        if (sp.feature === 'gap') continue;
+        // Face a driver a few metres back: the board turns towards the road.
+        const back = sampleAt(track, d - 8);
+        const yaw = Math.atan2(back.tx, back.tz) + Math.PI;
+        const off = track.halfWidth + 1.9;
+        const x = sp.x - sp.tz * side * off;
+        const z = sp.z + sp.tx * side * off;
+        const q = new Quaternion().setFromAxisAngle(up, yaw);
+        list.push(new Matrix4().compose(new Vector3(x, sp.y + 1.75, z), q, one));
+        posts.push(new Matrix4().compose(new Vector3(x, sp.y + 0.7, z), q, one));
+      }
+    }
+  }
+  if (!posts.length) return;
+  const boardGeo = new BoxGeometry(1.5, 0.95, 0.08);
+  const postGeo = new BoxGeometry(0.14, 1.4, 0.14);
+  const add = (geo: BufferGeometry, mat: InkLitMaterial | InkLitMaterial[], list: Matrix4[]) => {
+    const m = new InstancedMesh(geo, mat, list.length);
+    list.forEach((mx, i) => m.setMatrixAt(i, mx));
+    m.castShadow = m.receiveShadow = true;
+    scene.add(m);
+  };
+  const plain = ink({ color: '#3A3028' });
+  add(postGeo, plain, posts);
+  for (const [key, list] of boards) {
+    if (!list.length) continue;
+    const hairpin = key.startsWith('hairpin');
+    const count = hairpin ? 3 : 2;
+    const color = SEVERITY_COLOR[count];
+    const left = key.endsWith('L');
+    // Box groups: +x, −x, +y, −y, +z (towards the driver), −z. The back is painted mirrored so the
+    // chevrons point the same way on the ground from both sides (the board camera sees either).
+    const front = ink({ map: chevronTexture(count, color, left), color: '#ffffff' });
+    const back = ink({ map: chevronTexture(count, color, !left), color: '#ffffff' });
+    add(boardGeo, [plain, plain, plain, plain, front, back], list);
+  }
 }

@@ -130,6 +130,7 @@ Non c'è il gas: il mezzo va da solo alla velocità della marcia inserita, come 
 - **Scalare**: premere freno scala di una marcia; dalla 4ª in su scalando si riprende 1 PV. La scalata frena.  
 - **Frenare**: freno tenuto premuto frena davvero; da fermo è la retromarcia.  
 - Il ritmo tipico: si sale nei rettilinei, si scala prima delle curve, si sbanda in curva (drift).  
+- **Avviso curva**: poco prima di ogni curva, sopra il mezzo appare un cartellino con il tipo (larga, stretta, tornante, S), il verso, da uno a tre chevron di gravità e la marcia consigliata; se la marcia inserita è più alta, il numero lampeggia in rosso. La barra sotto si riempie avvicinandosi. Nelle S, entrati nella prima curva, mostra quella che segue. In pista, all'esterno delle curve strette ci sono tabelloni a chevron (due arancio; tre rossi nei tornanti); sulle tessere stampate del gioco da tavolo lo stesso segnale è dipinto sulla strada prima di ogni curva.  
 - **Fondi**: sterrato, fango, guado, ghiaia, sabbia, pietraia, ghiaccio, asfalto, con aderenza diversa; pioggia e neve tolgono aderenza. Le gomme e la mescola cambiano la resa per fondo.  
 - **Salti**: atterraggi puliti danno vapore e i salti lunghi danno Grinta.  
 - **Riposiziona**: rimette il mezzo in pista se è bloccato o ribaltato.
@@ -285,7 +286,8 @@ Con l'opzione "Eventi di gara" attiva, all'inizio di una gara può uscire un eve
 - In alto a sinistra: posizione e giro, poi la striscia con Scocca (PF), armi (colpi, olio, torretta, Grinta), manometro della caldaia, soldi e targhetta della marcia.  
 - In alto a destra: minimappa e classifica (compatta sui telefoni).  
 - Sopra il tachimetro: la mano di carte; in alto l'evento di gara.  
-- Al centro, quando serve: indicatore della Prova di Partenza, mirino, avviso "sotto tiro", banner degli esiti.
+- Al centro, quando serve: indicatore della Prova di Partenza, mirino, avviso "sotto tiro", banner degli esiti.  
+- Sul mezzo: sotto, marcia e Punti Vapore; sopra, l'avviso della prossima curva (sui telefoni, se in alto non c'è spazio, scende sotto la marcia).
 
 ### 9.3 Fine gara
 
@@ -298,7 +300,7 @@ Un circuito con l'istruttore, senza rivali; le lezioni ricaricano la caldaia da 
 | Sezione | Lezioni |
 | :---- | :---- |
 | Prima del VIA | Briefing, Partenza |
-| Guida (senza armi) | Accelera, Sterza, Marce, Drift, Spinta a vapore, Zona rossa (sfiato), Salto, Urti e PF (relitto parcheggiato), Barricate, Speroni, Riposiziona, Telecamera |
+| Guida (senza armi) | Accelera, Sterza, Marce, Curve (leggere l'avviso sopra il mezzo e scalare alla marcia consigliata), Drift, Spinta a vapore, Zona rossa (sfiato), Salto, Urti e PF (relitto parcheggiato), Barricate, Speroni, Riposiziona, Telecamera |
 | Fuoco | Cannone (sul relitto), Olio, Torretta, Difesa (il relitto spara a salve), Carte, Eventi |
 | Fine | guida libera fino al traguardo |
 

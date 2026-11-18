@@ -51,6 +51,8 @@ import { IDENTITY_COLORS, RIVAL_NAMES, aiVehicle, playerName, type RaceOutcome, 
 import { disposeScene } from '../world/kit';
 import { ui } from '../ui/state';
 import { VehicleTag } from '../ui/vehicle-tag';
+import { CornerTag } from '../ui/corner-tag';
+import { type Corner, classifyCorners, cornerCue, gearForRadius } from '../track/corners';
 import type { SteamReadout } from '../ui/steam-pips';
 import { canPush, type GearboxState } from '../vehicles/gearbox';
 import { boilerCal } from '../rules/boiler';
@@ -60,6 +62,13 @@ export { IDENTITY_COLORS };
 tunables.registerGroup('hud', [
   { key: 'hud.vehicleTag', type: 'boolean', default: true, label: 'Gear + steam under vehicle' },
   { key: 'hud.tagOffset', type: 'number', default: 2.6, min: 0, max: 8, step: 0.1, unit: 'm', label: 'Tag distance below the vehicle (screen down)' },
+  { key: 'hud.cornerTag', type: 'boolean', default: true, label: 'Corner warning above vehicle' },
+  { key: 'hud.cornerOffset', type: 'number', default: 2, min: 0, max: 8, step: 0.1, unit: 'm', label: 'Corner tag distance above the vehicle (screen up)' },
+  { key: 'hud.cornerSafeTop', type: 'number', default: 0.33, min: 0, max: 0.6, step: 0.01, label: 'Corner tag: HUD band (× view height) when the HUD strip is not found' },
+  { key: 'hud.cornerLead', type: 'number', default: 2.5, min: 0.5, max: 6, step: 0.1, unit: 's', label: 'Corner warning: time ahead' },
+  { key: 'hud.cornerMinLead', type: 'number', default: 25, min: 5, max: 80, step: 1, unit: 'm', label: 'Corner warning: min distance' },
+  { key: 'hud.cornerMaxLead', type: 'number', default: 90, min: 20, max: 200, step: 1, unit: 'm', label: 'Corner warning: max distance' },
+  { key: 'hud.cornerSGap', type: 'number', default: 20, min: 0, max: 60, step: 1, unit: 'm', label: 'S: longest straight between bends' },
 ]);
 
 tunables.registerGroup('showcase', [
@@ -94,6 +103,11 @@ export interface PlayerSlot {
   camYaw: number;
   /** Gear + steam pips pinned below the vehicle. */
   tag: VehicleTag;
+  /** Next-corner warning pinned above the vehicle. */
+  cornerTag: CornerTag;
+  /** Measured bottom of the HUD strip (px, null = not found) and when to measure it again. */
+  hudLine: number | null;
+  hudScanAt: number;
   /** Centre prompts: start test, boiler test, reticle, under fire. */
   gauges: PlayerGauges;
   banners: Banner[];
@@ -190,6 +204,8 @@ export class Game {
   private races = 0;
   private bannerId = 0;
   private minimap: Minimap | null = null;
+  /** Corners of the current track, for the corner tag (track/corners.ts). */
+  private corners: Corner[] = [];
   private features!: FeatureViews;
   private tmp2 = new Vector3();
   private unsubscribe: (() => void)[] = [];
@@ -269,8 +285,9 @@ export class Game {
     }
     const parent = worldUi();
     const tag = new VehicleTag(parent, index);
+    const cornerTag = new CornerTag(parent, index);
     const gauges = new PlayerGauges(parent, index);
-    this.slots.push({ index, input: new PlayerInput(index, sources), camera: new FollowCamera(1, this.opts.flags.vscale), camYaw: 0, tag, gauges, banners: [] });
+    this.slots.push({ index, input: new PlayerInput(index, sources), camera: new FollowCamera(1, this.opts.flags.vscale), camYaw: 0, tag, cornerTag, hudLine: null, hudScanAt: 0, gauges, banners: [] });
   }
 
   /** (Re)build the race: physics world, vehicles and their visuals. Racers 0..players-1 are humans. */
@@ -285,6 +302,7 @@ export class Game {
       this.setup.seed + this.races++,
       this.opts.flags.vscale,
     );
+    this.corners = classifyCorners(this.sim.track, { sGap: tunables.get<number>('hud.cornerSGap') });
     this.buildViews(specs);
     if (this.features) this.features.sim = this.sim;
     this.views.forEach((v, i) => {
@@ -389,6 +407,7 @@ export class Game {
     for (const s of this.slots) {
       s.input.dispose();
       s.tag.dispose();
+      s.cornerTag.dispose();
       s.gauges.dispose();
     }
     this.minimap?.dispose();
@@ -909,7 +928,38 @@ export class Game {
       const anchor = { x: root.position.x, y: root.position.y, z: root.position.z };
       const visible = !this.loop.paused && !(followRival && s.index === 0) && !ui.loading.value && !r.vehicle.wrecked && tunables.get<boolean>('hud.vehicleTag');
       s.tag.update(anchor, back, s.camera.camera, vp, r.vehicle.gearbox.gear, this.steamOf(r.vehicle.gearbox), visible);
+      const place = { above: tunables.get<number>('hud.cornerOffset'), below: back, belowPx: 26, safeTop: this.hudBottom(s, vp) };
+      s.cornerTag.update(anchor, place, s.camera.camera, vp, ...this.cornerOf(r, visible && tunables.get<boolean>('hud.cornerTag')));
     }
+  }
+
+  /**
+   * Bottom (px) of a player's HUD strip (hull + boiler), re-measured twice a second; the corner tag
+   * keeps below it. Fallback: `hud.cornerSafeTop` × view height.
+   */
+  private hudBottom(s: PlayerSlot, vp: ViewportRect): number {
+    const now = performance.now();
+    if (now >= s.hudScanAt) {
+      s.hudScanAt = now + 500;
+      const n = s.index + 1;
+      const els = [document.querySelector(`[data-testid="hull-p${n}"]`), document.querySelector(`[data-testid="boiler-p${n}"]`)];
+      const bottoms = els.filter((e): e is Element => !!e).map((e) => e.getBoundingClientRect().bottom);
+      s.hudLine = bottoms.length ? Math.max(...bottoms) + 6 : null;
+    }
+    return s.hudLine ?? vp.top + vp.height * tunables.get<number>('hud.cornerSafeTop');
+  }
+
+  /** Corner to announce for a racer, the current gear and the gear advised for it. */
+  private cornerOf(r: RaceSim['racers'][number], visible: boolean): [ReturnType<typeof cornerCue>, number, number] {
+    const gear = r.vehicle.gearbox.gear;
+    const speed = r.vehicle.telemetry.forwardSpeed;
+    if (!visible || r.finished || this.sim.phase === 'countdown' || r.progress.wrongWayTime > 0) return [null, gear, gear];
+    const g = (k: string) => tunables.get<number>(k);
+    const cue = cornerCue(this.corners, this.sim.track.length, r.progress.s, speed, { leadTime: g('hud.cornerLead'), minLead: g('hud.cornerMinLead'), maxLead: g('hud.cornerMaxLead') });
+    if (!cue) return [null, gear, gear];
+    // Advised gear: the tightest bend still to come in this corner.
+    const radius = Math.min(...cue.corner.bends.slice(cue.bend).map((b) => b.minRadius));
+    return [cue, gear, gearForRadius(radius, r.vehicle.maxSpeed(), g('ai.lateralAccel'))];
   }
 
   private updateHud(dt: number): void {

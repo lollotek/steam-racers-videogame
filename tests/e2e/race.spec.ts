@@ -60,3 +60,19 @@ test('M3 rules: start test meter, hull / cannon / boiler HUD, minimap, firing sp
   await expect.poll(async () => (await snapshot(page)).players[0]!.ammo).toBe(ammo - 1);
   expect(errors).toEqual([]);
 });
+
+test('corner tag: warns of the next corner above the vehicle, with kind and advised gear', async ({ page }, info) => {
+  test.setTimeout(180_000);
+  const errors = await boot(page, 'track=foundry-01&tier=low');
+  await page.evaluate(() => (window as unknown as Hook).__steamRacers.tunables.set('showcase.playerAutopilot', true));
+  const tag = page.getByTestId('ctag-p1');
+  // foundry-01 opens with an S (left, then right) after the start straight.
+  await expect(tag).toBeVisible({ timeout: 60_000 });
+  await expect(tag).toHaveAttribute('data-kind', 's');
+  await expect(tag).toHaveAttribute('data-turn', 'L');
+  await expect(page.getByTestId('ctag-p1-gear')).toHaveText(/^[1-6]$/);
+  await page.screenshot({ path: info.outputPath('corner-tag.png') });
+  // Then it is shown by itself again for the next corners.
+  await expect(tag).toHaveAttribute('data-kind', 'wide', { timeout: 60_000 });
+  expect(errors).toEqual([]);
+});

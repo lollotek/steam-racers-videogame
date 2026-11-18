@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { compileTrack } from '../../src/track/compile';
+import { compileTrack, sampleAt } from '../../src/track/compile';
 import { TRACKS } from '../../src/tracks';
 import type { TrackFile } from '../../src/track/track-format';
-import { moduleTiles, squareLines } from '../../src/editor/tileset';
+import { SIGN_BEFORE, cornerSigns, moduleTiles, squareLines } from '../../src/editor/tileset';
+import { classifyCorners } from '../../src/track/corners';
 
 const loop = (pieces: TrackFile['pieces']): TrackFile => ({
   id: 't', name: 't', biome: 'foundry', cell: 20, width: 15, laps: 1, level: 4, defaultSurface: 'plate', defaultBarricade: 'tyres', pieces,
@@ -58,5 +59,26 @@ describe('tileset modules (doc 05 §9)', () => {
     expect(cross.length).toBeGreaterThan(6 * 8 * 3);
     const grid = squareLines(t, 'grid');
     expect(grid.cross.length).toBeGreaterThan(0);
+  });
+});
+
+describe('corner signs on the tiles', () => {
+  it('one sign per corner, on the centre line, SIGN_BEFORE metres before its entry (clear of the start line), in the module before it', () => {
+    const t = compileTrack(TRACKS['foundry-01'] as TrackFile);
+    const corners = classifyCorners(t);
+    const signs = cornerSigns(t);
+    expect(signs.map((s) => `${s.kind}${s.turn}${s.severity}`)).toEqual(corners.map((c) => `${c.kind}${c.turn}${c.severity}`));
+    const cell = t.file.cell;
+    const tiles = moduleTiles(t);
+    signs.forEach((s, i) => {
+      const entry = sampleAt(t, corners[i]!.s0 + 0.5);
+      // foundry-01 starts with an S: that sign sits between the start line and the corner.
+      const before = i === 0 ? (corners[0]!.s0 - t.lineS) / 2 : SIGN_BEFORE;
+      expect(Math.hypot(entry.x - s.x, entry.z - s.z)).toBeCloseTo(before + 0.5, 0);
+      // Printed on a module of the track, not on the corner's own first module.
+      const tile = tiles.find((m) => m.cx === Math.floor(s.x / cell) && m.cz === Math.floor(s.z / cell));
+      expect(tile).toBeDefined();
+      expect(tile!.piece).not.toBe(t.samples.find((p) => p.s >= corners[i]!.s0)!.piece);
+    });
   });
 });
