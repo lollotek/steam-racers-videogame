@@ -19,9 +19,10 @@ export interface PlayerHud {
   /** Front cannon shells and readiness. */
   ammo: number;
   cannonReady: boolean;
-  /** Weapons unlock after `unlockLap` laps (clean first lap). */
+  /** Weapons armed once the boiler warmed up; `unlock` says how (e.g. "6th gear or lap 2", `unlockShort` "gear 6 / lap 2"). */
   armed: boolean;
-  unlockLap: number;
+  unlock: string;
+  unlockShort: string;
   /** Boiler gauge: 0 → 2 × CAL, right half red (gameplay.md §5.2). */
   boiler: { pv: number; cal: number; pressure: number; test: boolean };
   banners: Banner[];

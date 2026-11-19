@@ -42,7 +42,7 @@ import { HOT_ROD, STEAM_TANK, type VehicleSpec } from '../vehicles/vehicle-physi
 import { createDriver, driveRacer, type DriverState } from '../ai/driver';
 import type { RuleEvent } from '../sim/race-rules';
 import { hullCondition } from '../rules/hull';
-import { coneHalfAngle, isLocked } from '../rules/cannon';
+import { armingHint, armingShort, coneHalfAngle, isLocked } from '../rules/cannon';
 import { PlayerGauges, type BoilerTestView, type GaugeFrame, type ScreenPoint } from '../ui/gauges';
 import { Minimap } from '../ui/minimap';
 import type { Banner, ResultRow } from '../ui/state';
@@ -683,7 +683,7 @@ export class Game {
         if (e.outcome === 'perfect') this.banner(e.racer, 'PERFECT START!', 'good');
         if (e.outcome === 'good') this.banner(e.racer, 'GOOD START', 'good');
         if (e.outcome === 'stall') this.banner(e.racer, 'STALLED!', 'bad');
-        if (!r.rules.armed) this.banner(e.racer, `WEAPONS UNLOCK ON LAP ${t('weapons.unlockLap') + 1}`, 'info');
+        if (!r.rules.armed) this.banner(e.racer, `BOILER COLD: WEAPONS ARM IN ${armingHint().toUpperCase()}`, 'info');
         if (e.outcome === 'perfect' || e.outcome === 'good') steam(r.vehicle.curr.x, r.vehicle.curr.z, e.outcome === 'perfect' ? 14 : 7);
         break;
       }
@@ -716,7 +716,7 @@ export class Game {
         break;
       }
       case 'armed':
-        this.banner(e.racer, 'WEAPONS ARMED!', 'good');
+        this.banner(e.racer, 'BOILER HOT: WEAPONS ARMED!', 'good');
         break;
       case 'vent':
         steam(e.x, e.z, 10, [2, 6]);
@@ -1157,7 +1157,8 @@ export class Game {
         ammo: rr.cannon.ammo,
         cannonReady: rr.armed && rr.cannon.cooldown === 0 && rr.cannon.ammo > 0 && sim.clock >= tunables.get<number>('start.calmTime'),
         armed: rr.armed,
-        unlockLap: tunables.get<number>('weapons.unlockLap'),
+        unlock: armingHint(),
+        unlockShort: armingShort(),
         boiler: { pv: rr.boiler.pv, cal: boilerCal(rr.boiler), pressure: rr.boiler.pressure, test: rr.boiler.test !== null },
         banners: s.banners,
         index: s.index,

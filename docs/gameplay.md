@@ -208,6 +208,8 @@ Tre attacchi per mezzo, un'arma per attacco, scelti nella scheda Armi del Garage
 
 La torretta, senza Artigliere (passo 8), spara solo in avanti agganciando il bersaglio come il cannone.
 
+**Riscaldamento della caldaia.** Al VIA la caldaia è fredda e le armi sono bloccate. Si armano, per il resto della gara, la prima volta che si raggiunge la **6ª marcia** oppure alla fine del **primo giro**, quello che arriva prima. Il blocco vale per tutti, IA compresa. HUD: "COLD · GEAR 6 / LAP 2", poi l'avviso "BOILER HOT: WEAPONS ARMED!". Valori `weapons.unlockGear` e `weapons.unlockLap`.
+
 ### 7.2 Mira: il cono di dispersione
 
 Il Test di Fuoco del tavolo diventa un cono. Le armi anteriori agganciano da sole il rivale davanti (mirino e spicchio di mira a terra); il colpo cade in un punto a caso nel cono.
@@ -301,10 +303,10 @@ Un circuito con l'istruttore, senza rivali; le lezioni ricaricano la caldaia da 
 | :---- | :---- |
 | Prima del VIA | Briefing, Partenza |
 | Guida (senza armi) | Accelera, Sterza, Marce, Curve (leggere l'avviso sopra il mezzo e scalare alla marcia consigliata), Drift, Spinta a vapore, Zona rossa (stallo caldaia e sfiato), Salto, Urti e PF (relitto parcheggiato), Barricate, Speroni, Riposiziona, Telecamera |
-| Fuoco | Cannone (sul relitto), Olio, Torretta, Difesa (il relitto spara a salve), Carte, Eventi |
+| Fuoco | Riscaldamento (armi fredde finché non si sale in 6ª o si chiude un giro: l'istruttore lo spiega e chiede di salire in 6ª per armarle), Cannone (sul relitto), Olio, Torretta, Difesa (il relitto spara a salve), Carte, Eventi |
 | Fine | guida libera fino al traguardo |
 
-Fuori dalla Scuola armi e carte sono sempre attive. Anche nelle altre modalità compaiono suggerimenti contestuali, una volta sola.
+Fuori dalla Scuola le carte sono sempre attive e le armi seguono il riscaldamento della caldaia (§7.1). Anche nelle altre modalità compaiono suggerimenti contestuali, una volta sola.
 
 &nbsp;
 

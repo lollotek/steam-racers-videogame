@@ -8,6 +8,7 @@ import { GEAR_RATIOS } from '../../src/vehicles/gearbox';
 import { tunables } from '../../src/core/tunables';
 import type { TrackFile } from '../../src/track/track-format';
 import foundry from '../../src/tracks/foundry-01.json';
+import provingGround from '../../src/tracks/proving-ground.json';
 
 beforeAll(async () => {
   await initPhysics();
@@ -90,28 +91,42 @@ describe('race sim (Rapier, headless)', () => {
     expect(b.pf).toEqual(a.pf);
   }, 120_000);
 
-  it('weapons are locked until the first lap is complete, then an armed event fires', () => {
-    const f = file();
+  it('boiler warm-up: weapons arm for good at 6th gear, or after lap 1 for whoever never reaches it', () => {
+    // Proving ground: a straight long enough for the AI to reach 6th on lap 1.
+    const f = JSON.parse(JSON.stringify(provingGround)) as TrackFile;
     f.laps = 2;
     const sim = new RaceSim(f, [0, 1].map((i) => ({ spec: HOT_ROD, name: `ai${i}` })), 3);
     const drivers = sim.racers.map((_, i) => createDriver(i, 3, 0));
-    const fires: number[] = [];
-    const armed: number[] = [];
+    const armed: { racer: number; by: string; lap: number; topGear: number }[] = [];
+    const topGear = [0, 0];
+    const firedCold: number[] = [];
+    let firedAfterDownshift = false;
     while (sim.phase !== 'finished' && sim.clock < 200) {
-      // Everyone holds the trigger the whole race.
-      sim.step(drivers.map((d) => {
+      // Everyone holds the trigger the whole race; racer 0 never shifts above 5th.
+      sim.step(drivers.map((d, i) => {
         const c = driveRacer(d, sim);
         c.pressed.fireFront = true;
+        if (i === 0 && sim.racers[0]!.vehicle.gearbox.gear >= 5) c.pressed.steamPush = false;
         return c;
       }));
+      sim.racers.forEach((r, i) => (topGear[i] = Math.max(topGear[i]!, r.vehicle.gearbox.gear)));
       for (const e of sim.drainRuleEvents()) {
-        if (e.type === 'fire') fires.push(sim.racers[e.racer]!.progress.lap);
-        if (e.type === 'armed') armed.push(e.racer);
+        if (e.type === 'armed') armed.push({ racer: e.racer, by: e.by, lap: sim.racers[e.racer]!.progress.lap, topGear: topGear[e.racer]! });
+        if (e.type === 'fire') {
+          if (!armed.some((a) => a.racer === e.racer)) firedCold.push(e.racer);
+          if (e.racer === 1 && sim.racers[1]!.vehicle.gearbox.gear < 6) firedAfterDownshift = true;
+        }
       }
     }
-    expect(armed.sort()).toEqual([0, 1]);
-    expect(fires.length).toBeGreaterThan(0);
-    expect(Math.min(...fires)).toBeGreaterThanOrEqual(1);
+    expect(firedCold).toEqual([]);
+    expect(topGear[0]).toBeLessThanOrEqual(5);
+    const a0 = armed.find((a) => a.racer === 0)!;
+    const a1 = armed.find((a) => a.racer === 1)!;
+    expect(a0).toMatchObject({ by: 'lap', lap: 1 });
+    expect(a1).toMatchObject({ by: 'gear', lap: 0, topGear: 6 });
+    expect(armed.filter((a) => a.racer === 1)).toHaveLength(1);
+    // Armed for good: shifting down below 6th does not lock the cannon again.
+    expect(firedAfterDownshift).toBe(true);
     sim.dispose();
   }, 60_000);
 
