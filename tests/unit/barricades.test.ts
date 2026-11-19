@@ -158,8 +158,8 @@ describe('track edge (invisible rail)', () => {
     const plates = scrapeSpeed('riveted');
     const spikes = scrapeSpeed('hedgehog');
     expect(plates).toBeLessThan(0.95);
-    // Half-size vehicles (VEHICLE_SCALE 0.5): plates 0.54, spikes 0.42 of the clean-line speed.
-    expect(spikes).toBeLessThan(plates - 0.1);
+    // Default vehicle size (VEHICLE_SCALE 0.85): plates 0.50, spikes 0.41 of the clean-line speed.
+    expect(spikes).toBeLessThan(plates - 0.06);
   });
 
   it('barbed wire costs a gear on a hit', () => {

@@ -40,8 +40,8 @@ export const boundOfLine = (b: number) => (2 * b - ROAD_SQUARES) / ROAD_SQUARES;
 export const lineOfBound = (v: number) => Math.max(0, Math.min(ROAD_SQUARES, Math.round(((v + 1) * ROAD_SQUARES) / 2)));
 
 /**
- * Default vehicle size factor (decided 2026-11-16): vehicles at half size, so a hot rod is one
- * square long (2.5 m) and the track feels twice as big. Mass, speeds and paths unchanged
- * (`scaleSpec` in vehicle-physics.ts; `?vscale=` overrides it).
+ * Default vehicle size factor: half size from 2026-11-16 (a hot rod one square long, 2.5 m),
+ * raised to 0.85 on 2026-11-19. Mass, speeds and paths unchanged (`scaleSpec` in
+ * vehicle-physics.ts; `?vscale=` and the debug panel override it).
  */
-export const VEHICLE_SCALE = 0.5;
+export const VEHICLE_SCALE = 0.85;

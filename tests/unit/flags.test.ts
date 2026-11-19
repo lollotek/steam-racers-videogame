@@ -15,7 +15,7 @@ describe('parseFlags', () => {
       laps: null,
       track: null,
       quick: false,
-      custom: false, grid: false, vscale: 0.5,
+      custom: false, grid: false, vscale: 0.85,
       fullscreen: true,
     });
     expect(parseFlags('?custom').custom).toBe(true);
