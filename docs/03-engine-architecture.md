@@ -399,6 +399,17 @@ A track file names its biome (`biome` field); `src/biomes/index.ts` maps the id 
 
 Following the track tangent rather than the raw vehicle heading keeps the view calm during slides and spins. Camera hints from the track can override pitch/distance per section.
 
+### 9.1 Race intro
+
+Between the loading screen and the countdown a short fly-over plays (~14 s, any key / button / tap skips it):
+
+1. **Overview**: high orbit framing the whole track, with its name and lap count.
+2. **Key places** (up to 3): crane fly-bys of jumps, hazards, hairpins, chicanes… picked by priority, one of each kind first, spread round the lap, shown in lap order, each with a one-line tip.
+3. **Starting grid**: tracking shot over the road from the back row to beyond pole.
+4. **Player close-up**: swing round player 1's vehicle, then one eased move hands over to the race camera.
+
+Shots are pure data (`src/race/intro-shots.ts`, unit tested); `src/game/race-intro.ts` plays them on every player camera. The simulation does not step during the intro, so the countdown starts after it. HUD, minimap and tags are hidden; letterbox bars, a dip from black at each cut and captions are drawn by the UI. The fog lifts while the camera is far from what it shows and eases back over the hand-over. Tunables group `intro` (durations, number of key places, on/off); `?intro=0|1` forces it (it is off under `?test`). It plays once per race load, not on restart.
+
 ---
 
 ## 10. Rendering subsystem

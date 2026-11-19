@@ -35,13 +35,13 @@ export function App({ touch, actions }: Props) {
   const split = ui.splitScreen.value;
   const results = ui.results.value;
   const countdown = ui.countdown.value;
+  const intro = ui.intro.value;
   return (
     <div class={`ui-root ${split ? 'split' : ''}`}>
-      {players.map((p) => (
-        <PlayerHudView key={p.index} p={p} split={split} />
-      ))}
-      {!split && <Leaderboard />}
-      {ui.phase.value === 'countdown' && countdown > 0 && (
+      {!intro && players.map((p) => <PlayerHudView key={p.index} p={p} split={split} />)}
+      {!intro && !split && <Leaderboard />}
+      {intro && !ui.loading.value && <IntroOverlay actions={actions} />}
+      {!intro && ui.phase.value === 'countdown' && countdown > 0 && (
         <div class="countdown" data-testid="countdown">
           {countdown}
         </div>
@@ -49,7 +49,7 @@ export function App({ touch, actions }: Props) {
       <div class="badge" data-testid="backend-badge">
         {ui.backend.value} · {ui.tier.value} · {Math.round(ui.renderScale.value * 100)}% · {ui.fps.value} fps
       </div>
-      {ui.showTouch.value && !split && !results && <TouchControls source={touch} />}
+      {ui.showTouch.value && !split && !results && !intro && <TouchControls source={touch} />}
       {results && <ResultsPanel results={results} actions={actions} />}
       {ui.loading.value && (
         <div class="overlay" data-testid="loading">
@@ -68,6 +68,33 @@ export function App({ touch, actions }: Props) {
         </div>
       )}
       <RotateHint />
+    </div>
+  );
+}
+
+/**
+ * Race intro (game/race-intro.ts): letterbox bars, a flash at every cut, the shot caption and the
+ * skip hint. Tap / click anywhere skips (any button does too, read by the game).
+ */
+function IntroOverlay({ actions }: { actions: FlowActions }) {
+  const c = ui.intro.value!;
+  return (
+    <div class={`intro ${c.out ? 'out' : ''} kind-${c.kind}`} data-testid="intro" onPointerUp={() => actions.skipIntro()}>
+      <div class="intro-bar top" />
+      <div class="intro-bar bottom" />
+      {!c.out && <div key={`cut-${c.shot}`} class="intro-cut" />}
+      {!c.out && (
+        <div key={`cap-${c.shot}`} class="intro-caption" data-testid="intro-caption">
+          <div class="intro-title">{c.title}</div>
+          {c.sub && <div class="intro-sub">{c.sub}</div>}
+        </div>
+      )}
+      {!c.out && (
+        <div class="intro-skip">
+          <span class="keys">Any button to skip</span>
+          <span class="tap">Tap to skip</span>
+        </div>
+      )}
     </div>
   );
 }

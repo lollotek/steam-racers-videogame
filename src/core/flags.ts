@@ -14,6 +14,7 @@
  *   ?custom           race the track handed over by the track editor (doc 05 §7)
  *   ?grid             draw the tabletop squares on the road (doc 05 §2)
  *   ?vscale=0.85      vehicle size factor, 0.25..1.5 (default 0.85; 1 = the original full size)
+ *   ?intro=0|1        race intro fly-over before the countdown (default on; off under ?test)
  *   ?quick            skip the menus: straight into a race from these flags (implied by ?test;
  *                     ?test&menu=1 keeps the menus)
  */
@@ -40,6 +41,8 @@ export interface Flags {
   grid: boolean;
   /** Vehicle size factor (physics, models, effects, camera distance). */
   vscale: number;
+  /** Race intro: forced on / off, null = default (on, off under ?test). */
+  intro: boolean | null;
 }
 
 const TIERS: readonly QualityTierName[] = ['low', 'medium', 'high', 'ultra'];
@@ -67,6 +70,7 @@ export function parseFlags(search: string): Flags {
     custom: p.has('custom') && p.get('custom') !== '0',
     grid: p.has('grid') && p.get('grid') !== '0',
     vscale: Math.min(1.5, Math.max(0.25, num('vscale', VEHICLE_SCALE))),
+    intro: p.has('intro') ? p.get('intro') !== '0' : null,
     quick: (p.has('quick') && p.get('quick') !== '0') || (p.has('test') && p.get('menu') !== '1'),
   };
 }
