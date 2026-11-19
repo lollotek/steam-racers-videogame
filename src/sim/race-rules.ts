@@ -11,7 +11,7 @@ import type { ActionFrame } from '../input/actions';
 import { type BoilerState, createBoiler, stepBoiler } from '../rules/boiler';
 import { type StartTest, createStartTest, resolveStart, startEffect, stepStartTest, type StartOutcome } from '../rules/start-test';
 import { type HullState, createHull, damage, edgeDamage, ram, scrapeDamage } from '../rules/hull';
-import { type CannonState, type HitZone, coneHalfAngle, createCannon, isLocked, pickTarget, shotAngle, shotWobble, zoneDamage, zoneOf } from '../rules/cannon';
+import { type CannonState, type HitZone, armedAtStart, armsNow, coneHalfAngle, createCannon, isLocked, pickTarget, shotAngle, shotWobble, zoneDamage, zoneOf } from '../rules/cannon';
 import type { VehicleStats } from '../rules/stats';
 import type { BoilerOutcome, BoilerTestKind } from '../rules/boiler';
 import type { Barricade, HazardKind, PickupKind } from '../track/track-format';
@@ -28,7 +28,7 @@ export interface RacerRules {
   cannon: CannonState;
   start: StartTest;
   startOutcome: StartOutcome | null;
-  /** Weapons unlocked (after `weapons.unlockLap` laps). */
+  /** Weapons unlocked: the boiler warmed up (reached `weapons.unlockGear` or `weapons.unlockLap` laps). */
   armed: boolean;
   /** Cup money collected on the track this race (money bags, doc 04 A3). */
   money: number;
@@ -51,7 +51,8 @@ export type RuleEvent =
   | { type: 'hazard'; racer: number; id: number; kind: HazardKind; effect: 'damage' | 'crash' | 'steam'; amount: number }
   | { type: 'wreck'; racer: number }
   | { type: 'ram'; a: number; b: number; winner: number; x: number; z: number }
-  | { type: 'armed'; racer: number }
+  /** The boiler is hot: weapons armed for the rest of the race (`by` what warmed it up). */
+  | { type: 'armed'; racer: number; by: 'gear' | 'lap' }
   /** `blocked`: the shell stopped on a barricade at (tx, tz). */
   | { type: 'fire'; racer: number; target: number; x: number; z: number; tx: number; tz: number; zone: HitZone; flight: number; blocked: boolean }
   | { type: 'hit'; racer: number; from: number; zone: HitZone; pf: number; x: number; z: number };
@@ -92,7 +93,7 @@ export function createRacerRules(stats: VehicleStats, pole: boolean): RacerRules
     cannon: createCannon(),
     start: createStartTest(stats.man, stats.aff, pole),
     startOutcome: null,
-    armed: tunables.get<number>('weapons.unlockLap') === 0,
+    armed: armedAtStart(),
     money: 0,
     pylonAcc: 0,
   };
@@ -158,6 +159,8 @@ export class RaceRules {
     // Cannon: lock on the rival ahead, track how steady the shooter is.
     const c = rr.cannon;
     const g = v.gearbox;
+    // Boiler warm-up: reaching the unlock gear arms the weapons for good.
+    if (!rr.armed && armsNow(g.gear, 0)) this.arm(r, 'gear');
     c.cooldown = Math.max(0, c.cooldown - dt);
     c.sinceManoeuvre = v.lastOutput?.gearChanged || v.lastOutput?.pushed ? 0 : c.sinceManoeuvre + dt;
     c.steady = Math.abs(g.steer) < 0.2 ? c.steady + dt : 0;
@@ -216,15 +219,14 @@ export class RaceRules {
 
   lapCompleted(r: RulesRacer): void {
     const rr = r.rules;
-    if (!rr.armed) {
-      // The first laps are a clean race: weapons unlock after `weapons.unlockLap` laps.
-      if (r.progress.lap >= tunables.get<number>('weapons.unlockLap')) {
-        rr.armed = true;
-        this.events.push({ type: 'armed', racer: r.index });
-      }
-      return;
-    }
+    // Boiler warm-up fallback: whoever never reached the unlock gear arms after the warm-up laps.
+    if (!rr.armed && armsNow(0, r.progress.lap)) this.arm(r, 'lap');
     rr.cannon.ammo += tunables.get<number>('weapons.cannon.lapAmmo');
+  }
+
+  private arm(r: RulesRacer, by: 'gear' | 'lap'): void {
+    r.rules.armed = true;
+    this.events.push({ type: 'armed', racer: r.index, by });
   }
 
   hurt(r: RulesRacer, pf: number, source: Extract<RuleEvent, { type: 'damage' }>['source'], clock: number, armour = false): number {

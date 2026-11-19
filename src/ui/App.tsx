@@ -130,9 +130,9 @@ function PlayerHudView({ p, split }: { p: PlayerHud; split: boolean }) {
       </div>
       <div class="strip">
         <HullBox p={p} />
-        <div class={`ammo ${p.cannonReady ? 'ready' : ''} ${p.armed ? '' : 'locked'}`} data-testid={`ammo-p${p.index + 1}`} title="Front cannon shells">
+        <div class={`ammo ${p.cannonReady ? 'ready' : ''} ${p.armed ? '' : 'locked'}`} data-testid={`ammo-p${p.index + 1}`} title={p.armed ? 'Front cannon shells' : `Boiler cold: weapons arm in ${p.unlock}`}>
           <span class="ammo-label">CANNON</span>
-          <span class="ammo-count">{p.armed ? p.ammo : `LOCKED · LAP ${p.unlockLap + 1}`}</span>
+          <span class="ammo-count">{p.armed ? p.ammo : `COLD · ${p.unlockShort.toUpperCase()}`}</span>
         </div>
         <BoilerGauge p={p} />
         {p.money > 0 && (

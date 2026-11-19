@@ -4,7 +4,7 @@
  */
 import type { Button } from '../input/actions';
 import { P1_KEYS, P2_KEYS, mergeBindings, type KeyBindings } from '../input/keyboard';
-import { tunables } from '../core/tunables';
+import { armedAtStart, armingHint } from '../rules/cannon';
 import { PAD_BUTTONS } from '../input/gamepad';
 
 interface Row {
@@ -58,8 +58,8 @@ function keys(b: KeyBindings, row: Row): string {
 
 function hint(row: Row): string | undefined {
   if (row.button === 'fireFront') {
-    const lap = tunables.get<number>('weapons.unlockLap');
-    return lap > 0 ? `armed from lap ${lap + 1}` : 'auto-aims the rival ahead';
+    // Boiler warm-up (gameplay.md §7.1): the cannon is cold until the unlock gear or lap.
+    return armedAtStart() ? 'auto-aims the rival ahead' : `auto-aims · boiler cold until ${armingHint()}`;
   }
   return row.hint;
 }
