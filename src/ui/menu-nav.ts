@@ -39,6 +39,12 @@ const top = () => stack[stack.length - 1];
 function onKey(e: KeyboardEvent): void {
   const m = top();
   if (!m || e.repeat) return;
+  // Typing in a text field (tuning JSON): only Esc leaves it.
+  const t = e.target as HTMLElement | null;
+  if (t && (t.tagName === 'TEXTAREA' || t.tagName === 'INPUT')) {
+    if (e.code === 'Escape') t.blur();
+    return;
+  }
   const prev = ['ArrowUp', 'ArrowLeft', 'KeyW', 'KeyA'].includes(e.code);
   const next = ['ArrowDown', 'ArrowRight', 'KeyS', 'KeyD'].includes(e.code);
   if (prev || next) {
