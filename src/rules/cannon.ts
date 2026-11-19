@@ -9,7 +9,8 @@ import { tunables } from '../core/tunables';
 import type { Rng } from '../core/rng';
 
 tunables.registerGroup('weapons', [
-  { key: 'weapons.unlockLap', type: 'number', default: 1, min: 0, max: 5, step: 1, unit: 'laps', label: 'Weapons unlock after (0 = from GO)' },
+  { key: 'weapons.unlockGear', type: 'number', default: 6, min: 1, max: 6, step: 1, label: 'Weapons unlock reaching gear (1 = from GO)' },
+  { key: 'weapons.unlockLap', type: 'number', default: 1, min: 0, max: 5, step: 1, unit: 'laps', label: '…or after laps (0 = gear only)' },
   { key: 'weapons.cannon.ammo', type: 'number', default: 6, min: 0, max: 30, step: 1, label: 'Cannon: shells at the start' },
   { key: 'weapons.cannon.lapAmmo', type: 'number', default: 1, min: 0, max: 10, step: 1, label: 'Cannon: shells per lap (until ammo crates)' },
   { key: 'weapons.cannon.cooldown', type: 'number', default: 1.2, min: 0.1, max: 5, step: 0.05, unit: 's', label: 'Cannon: reload time' },
@@ -51,6 +52,36 @@ export interface CannonState {
 
 export function createCannon(): CannonState {
   return { ammo: tunables.get<number>('weapons.cannon.ammo'), cooldown: 0, target: -1, lockTime: 0, steady: 0, sinceManoeuvre: 99 };
+}
+
+/**
+ * Boiler warm-up (gameplay.md §7.1): weapons start cold and arm, for good, the first time the
+ * racer reaches `weapons.unlockGear` or completes `weapons.unlockLap` laps, whichever comes first.
+ */
+export function armedAtStart(): boolean {
+  return tunables.get<number>('weapons.unlockGear') <= 1;
+}
+
+export function armsNow(gear: number, lapsDone: number): boolean {
+  const lap = tunables.get<number>('weapons.unlockLap');
+  return gear >= tunables.get<number>('weapons.unlockGear') || (lap > 0 && lapsDone >= lap);
+}
+
+const ORDINAL = ['', '1st', '2nd', '3rd', '4th', '5th', '6th'];
+
+/** Short unlock condition for the HUD and help, e.g. "6th gear or lap 2". */
+export function armingHint(): string {
+  const gear = tunables.get<number>('weapons.unlockGear');
+  const lap = tunables.get<number>('weapons.unlockLap');
+  const g = `${ORDINAL[gear] ?? `${gear}th`} gear`;
+  return lap > 0 ? `${g} or lap ${lap + 1}` : g;
+}
+
+/** Compact form for the HUD cannon box, e.g. "gear 6 / lap 2". */
+export function armingShort(): string {
+  const gear = tunables.get<number>('weapons.unlockGear');
+  const lap = tunables.get<number>('weapons.unlockLap');
+  return lap > 0 ? `gear ${gear} / lap ${lap + 1}` : `gear ${gear}`;
 }
 
 export function isLocked(c: CannonState): boolean {

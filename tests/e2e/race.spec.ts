@@ -34,7 +34,7 @@ test('M3 rules: start test meter, hull / cannon / boiler HUD, minimap, firing sp
   await page.evaluate(() => {
     const h = (window as unknown as Hook & { __steamRacers: { game: { startRace(): void } } }).__steamRacers;
     h.tunables.set('race.countdown', 8);
-    h.tunables.set('weapons.unlockLap', 0); // armed from GO, to test firing without driving a lap
+    h.tunables.set('weapons.unlockGear', 1); // boiler hot from GO, to test firing without warming up
     h.game.startRace();
   });
   await expect(page.getByTestId('start-test-p1')).toBeVisible();
