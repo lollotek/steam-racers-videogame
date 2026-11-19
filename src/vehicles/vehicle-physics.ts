@@ -36,6 +36,7 @@ tunables.registerGroup('handling', [
   { key: 'handling.uprightAssist', type: 'number', default: 9, min: 0, max: 20, step: 0.5, unit: 'rad/s', label: 'Upright assist (spring frequency)' },
   { key: 'handling.maxTiltRate', type: 'number', default: 2.5, min: 0.5, max: 10, step: 0.1, unit: 'rad/s', label: 'Max roll/pitch rate' },
   { key: 'handling.maxYawRate', type: 'number', default: 3.2, min: 1, max: 10, step: 0.1, unit: 'rad/s', label: 'Max yaw rate' },
+  { key: 'handling.yawInertia', type: 'number', default: 3.5, min: 1, max: 4, step: 0.05, label: 'Yaw inertia × per halving of vehicle size' },
   { key: 'handling.mass', type: 'number', default: 1400, min: 200, max: 6000, step: 50, unit: 'kg', label: 'Mass' },
 ]);
 
@@ -131,6 +132,8 @@ export class PhysicsVehicle {
   readonly halfX: number;
   /** Mass currently applied to the body (follows the tunable live). */
   private mass = 0;
+  /** `handling.yawInertia` currently applied (follows the tunable live). */
+  private yawFactor = 0;
   readonly collider: RAPIER.Collider;
   private readonly normal = { x: 0, y: 1, z: 0 };
 
@@ -174,10 +177,15 @@ export class PhysicsVehicle {
   /** Mass, inertia and the mass-dependent suspension limits, always changed together. */
   private applyMass(mass: number): void {
     this.mass = mass;
+    this.yawFactor = tunables.get('handling.yawInertia');
     const { half } = this.spec;
+    // Yaw inertia of a scaled vehicle (k² × the full size) would make it spin twice as fast at
+    // half size (tyre forces unchanged, lever arms × k): `handling.yawInertia` per halving of the
+    // size brings the yaw response back to the full-size one (×3.5 at k = 0.5, doc 05 §2).
+    const yawComp = Math.pow(this.yawFactor, Math.log2(1 / (this.spec.scale ?? 1)));
     const inertia = {
       x: (mass / 12) * (4 * half.y * half.y + 4 * half.z * half.z),
-      y: (mass / 12) * (4 * half.x * half.x + 4 * half.z * half.z),
+      y: (mass / 12) * (4 * half.x * half.x + 4 * half.z * half.z) * yawComp,
       z: (mass / 12) * (4 * half.x * half.x + 4 * half.y * half.y),
     };
     // Low centre of mass keeps arcade vehicles on their wheels.
@@ -198,7 +206,7 @@ export class PhysicsVehicle {
     const t = (k: string) => tunables.get(k);
     const vc = this.controller;
     const maxSpeed = this.maxSpeed();
-    if (t('handling.mass') !== this.mass) this.applyMass(t('handling.mass'));
+    if (t('handling.mass') !== this.mass || t('handling.yawInertia') !== this.yawFactor) this.applyMass(t('handling.mass'));
     const mass = this.mass;
     const fwdSpeed = vc.currentVehicleSpeed();
     if (this.stun > 0) {
