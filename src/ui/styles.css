@@ -1172,6 +1172,19 @@ body.touch-ui .badge {
   font-variant-numeric: tabular-nums;
 }
 
+/* PC: hull, cannon, boiler and money stacked in one column, boxes of equal width. */
+body:not(.touch-ui) .strip {
+  flex-direction: column;
+  align-items: stretch;
+  align-self: flex-start;
+  gap: 4px;
+}
+body:not(.touch-ui) .strip .hull-num,
+body:not(.touch-ui) .strip .ammo-count,
+body:not(.touch-ui) .strip .boiler-num {
+  margin-left: auto;
+}
+
 /* ---------------------------------------------------------------------------------------------
  * Front-end screens (doc 04 B1–B3): title, setup, briefing, standings, workshop, trophy.
  * Opaque painted backdrop (no 3D scene behind the menus), ink + brass like the HUD panels.

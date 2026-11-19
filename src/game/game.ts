@@ -20,7 +20,8 @@ import type { TouchSource } from '../input/touch';
 import type { ActionFrame, InputSource } from '../input/actions';
 import { DynamicResolution, TIERS, type QualityTierName } from '../render/quality';
 import { type RendererHandle, pixelRatioFor } from '../render/renderer';
-import { InkPipeline } from '../render/pipeline';
+import { InkPipeline, playerLayer } from '../render/pipeline';
+import { hullBorderColor, type BorderColor } from '../render/hull-border';
 import { SplitCompositor } from '../render/split';
 import { SharedTex, U } from '../render/ink/ink-uniforms';
 import { makeProceduralSet, type ProceduralSet } from '../render/procedural/textures';
@@ -196,6 +197,7 @@ export class Game {
   private split: SplitCompositor | null = null;
   sim!: RaceSim;
   private views: RacerView[] = [];
+  private readonly borderColor: BorderColor = { r: 0, g: 0, b: 0, alpha: 0 };
   private tex: ProceduralSet;
   private trackFile: TrackFile;
   frames = 0;
@@ -270,7 +272,7 @@ export class Game {
     this.minimap = new Minimap(worldUi(), this.sim.track);
 
     this.gfx.renderer.shadowMap.enabled = true;
-    this.pipelines = this.slots.map((s) => new InkPipeline(gfx.renderer, this.scene, s.camera.camera, { noise: this.tex.noise, paper: this.tex.paper }));
+    this.pipelines = this.slots.map((s) => new InkPipeline(gfx.renderer, this.scene, s.camera.camera, { noise: this.tex.noise, paper: this.tex.paper }, playerLayer(s.index)));
     if (this.pipelines.length === 2) this.split = new SplitCompositor(gfx.renderer, this.pipelines);
 
     this.setTier(opts.tier);
@@ -342,6 +344,8 @@ export class Game {
       const rig = spec === HOT_ROD ? buildHotRod(this.tex, color) : buildSteamTank(this.tex, color);
       // Vehicle size factor (?vscale, units.ts): the model and its effects follow the physics.
       rig.root.scale.setScalar(k);
+      // Players' vehicles also live on their own camera layer: the hull border mask (render/pipeline.ts).
+      if (i < this.players) rig.root.traverse((o) => o.layers.enable(playerLayer(i)));
       this.scene.add(rig.root);
       const exhaust = rig.stacks.map(() =>
         this.particles.addEmitter({ kind: 'smoke', rate: 0, position: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 2.5, z: 0 }, spread: 0.4 * k, life: [1.2, 2.4], size: [0.8 * k, 3.2 * k] }),
@@ -839,6 +843,13 @@ export class Game {
   }
 
   private render(): void {
+    // Player hull border (render/hull-border.ts): green → orange → red with the hull.
+    const now = performance.now() / 1000;
+    this.slots.forEach((s, i) => {
+      const r = this.sim.racers[s.index];
+      const c = r ? hullBorderColor(r.rules.hull, now, this.borderColor) : null;
+      this.pipelines[i]?.setHighlight(c?.r ?? 0, c?.g ?? 0, c?.b ?? 0, c?.alpha ?? 0);
+    });
     const shadow = this.world.keyLight.shadow;
     const every = tunables.get<number>('quality.shadowEvery');
     shadow.autoUpdate = every <= 1;

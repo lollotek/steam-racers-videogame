@@ -27,9 +27,9 @@ tunables.registerGroup('camera', [
   { key: 'camera.board.azimuth', type: 'number', default: 35, min: -180, max: 180, step: 1, unit: '°', label: 'Board azimuth' },
   { key: 'camera.board.follow', type: 'number', default: 0, min: 0, max: 1, step: 0.05, label: 'Board yaw follow (0 = fixed)' },
   { key: 'camera.board.followHalfLife', type: 'number', default: 2.5, min: 0.1, max: 10, step: 0.1, unit: 's', label: 'Board yaw follow half-life' },
-  { key: 'camera.board.distance', type: 'number', default: 92, min: 10, max: 300, step: 1, unit: 'm', label: 'Board distance (× vehicle scale)' },
-  { key: 'camera.board.distanceAtSpeed', type: 'number', default: 104, min: 10, max: 320, step: 1, unit: 'm', label: 'Board distance at max speed' },
-  { key: 'camera.board.lookAhead', type: 'number', default: 14, min: 0, max: 40, step: 0.5, unit: 'm', label: 'Board look-ahead' },
+  { key: 'camera.board.distance', type: 'number', default: 228, min: 10, max: 300, step: 1, unit: 'm', label: 'Board distance (× vehicle scale)' },
+  { key: 'camera.board.distanceAtSpeed', type: 'number', default: 240, min: 10, max: 320, step: 1, unit: 'm', label: 'Board distance at max speed' },
+  { key: 'camera.board.lookAhead', type: 'number', default: 40, min: 0, max: 80, step: 0.5, unit: 'm', label: 'Board look-ahead' },
 ]);
 
 export interface CameraTarget {
