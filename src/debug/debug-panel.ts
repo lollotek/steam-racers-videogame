@@ -5,6 +5,7 @@
 import { Pane, type FolderApi } from 'tweakpane';
 import Stats from 'stats-gl';
 import { type Preset, type TunableDef, tunables } from '../core/tunables';
+import type { Flags } from '../core/flags';
 import type { Game } from '../game/game';
 
 const PRESETS_KEY = 'sr.tuningPresets';
@@ -26,7 +27,7 @@ function savePresets(p: Record<string, Preset>): void {
 }
 
 /** `game()` is the race running now (null on the menus): the panel outlives races (doc 04 B1). */
-export async function mountDebugPanel(game: () => Game | null, renderer: Game['gfx']['renderer'], isTouch: boolean): Promise<void> {
+export async function mountDebugPanel(game: () => Game | null, renderer: Game['gfx']['renderer'], isTouch: boolean, flags: Flags): Promise<void> {
   const container = document.createElement('div');
   container.id = 'debug-panel';
   document.body.appendChild(container);
@@ -69,6 +70,20 @@ export async function mountDebugPanel(game: () => Game | null, renderer: Game['g
   tunables.onChange((key) => {
     if (key === 'camera.mode') pane.refresh();
   });
+
+  // --- Vehicle size (?vscale) ----------------------------------------------------
+  // Restarts the race on release (physics bodies are built at spawn); kept in the URL for reloads.
+  pane
+    .addBinding(flags, 'vscale', { label: 'Vehicle scale', min: 0.25, max: 1.5, step: 0.05 })
+    .on('change', (ev) => {
+      if (!ev.last) return;
+      const k = Math.round(ev.value * 100) / 100;
+      flags.vscale = k;
+      const url = new URL(location.href);
+      url.searchParams.set('vscale', String(k));
+      history.replaceState(history.state, '', url);
+      game()?.setVehicleScale(k);
+    });
 
   // --- Presets -----------------------------------------------------------------
   const pf = pane.addFolder({ title: 'Presets', expanded: false });

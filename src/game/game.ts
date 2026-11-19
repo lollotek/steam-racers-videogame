@@ -325,6 +325,14 @@ export class Game {
     this.dynres.reset();
   }
 
+  /** Debug panel: change the vehicle size factor (`?vscale`) and restart the race with it. */
+  setVehicleScale(k: number): void {
+    this.opts.flags.vscale = k;
+    for (const s of this.slots) s.camera.zoom = k;
+    for (const v of this.views) v.rig.root.scale.setScalar(k);
+    this.startRace();
+  }
+
   /**
    * Vehicle visuals and their emitters. Built once and kept across restarts: new rigs mean new
    * materials, and every new material is a shader compile, i.e. a frame hitch on the grid.

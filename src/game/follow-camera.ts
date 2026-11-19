@@ -65,7 +65,7 @@ export class FollowCamera {
    * @param zoom vehicle size factor (`?vscale`): distances and look-ahead are the tunables × zoom,
    * so the vehicles keep their size on screen whatever their scale.
    */
-  constructor(aspect: number, private readonly zoom = 1) {
+  constructor(aspect: number, public zoom = 1) {
     this.camera = new PerspectiveCamera(tunables.get('camera.fov'), aspect, 2, 1000);
   }
 

@@ -74,7 +74,7 @@ async function boot(): Promise<void> {
 
   if (flags.debug) {
     const { mountDebugPanel } = await import('./debug/debug-panel');
-    await mountDebugPanel(() => game, gfx.renderer, ui.showTouch.value);
+    await mountDebugPanel(() => game, gfx.renderer, ui.showTouch.value, flags);
   }
 
   await flow.boot();

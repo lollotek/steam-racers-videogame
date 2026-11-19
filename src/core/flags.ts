@@ -13,7 +13,7 @@
  *   ?fullscreen=0     phones: do not enter fullscreen on the first tap
  *   ?custom           race the track handed over by the track editor (doc 05 §7)
  *   ?grid             draw the tabletop squares on the road (doc 05 §2)
- *   ?vscale=0.5       vehicle size factor, 0.25..1.5 (default 0.5; 1 = the original full size)
+ *   ?vscale=0.85      vehicle size factor, 0.25..1.5 (default 0.85; 1 = the original full size)
  *   ?quick            skip the menus: straight into a race from these flags (implied by ?test;
  *                     ?test&menu=1 keeps the menus)
  */
