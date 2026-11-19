@@ -1,17 +1,25 @@
 /**
  * Ink-comic render pipeline (doc 02 §2, §5, §7, §11):
  * MRT geometry pass (color HDR, view normals, meta) → outlines → bloom → tonemap →
- * grade → vignette + paper + grain → AA. Debug views replace the output node.
+ * grade → vignette + paper + grain → player hull border → AA. Debug views replace the output node.
+ *
+ * Player hull border: a second, cheap pass draws only the player's vehicle (its own camera layer,
+ * flat override material) into a depth-only mask. The border is the dilated mask minus the mask,
+ * composited after grading so its hull colour stays readable, and it ignores scene depth, so the
+ * car stays visible behind obstacles (where the hidden body also gets a light tint).
  */
 import {
   BlendMode,
+  Layers,
   MaterialBlending,
+  MeshBasicNodeMaterial,
   NeutralToneMapping,
   RenderPipeline,
   SRGBColorSpace,
   type Camera,
   type Scene,
   type Texture,
+  Vector3,
   type WebGPURenderer,
 } from 'three/webgpu';
 import {
@@ -42,6 +50,7 @@ import {
   step,
   texture,
   time,
+  uniform,
   vec2,
   vec3,
   vec4,
@@ -56,7 +65,16 @@ import { fogFactorFromDistance } from './ink/ink-material';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type N = any;
 
-const REBUILD_KEYS = new Set(['post.bloom', 'post.aa', 'post.debugView', 'lines.enabled']);
+const REBUILD_KEYS = new Set(['post.bloom', 'post.aa', 'post.debugView', 'lines.enabled', 'lines.player']);
+
+/** Camera layer of player n's vehicle (layer 0 stays the whole scene). */
+export const playerLayer = (index: number): number => 1 + index;
+
+/** Border sample ring: 16 directions at the full radius, 8 at half (no gaps on thin parts). */
+const RING: [number, number, number][] = [
+  ...Array.from({ length: 16 }, (_, k) => [Math.cos((k / 16) * Math.PI * 2), Math.sin((k / 16) * Math.PI * 2), 1] as [number, number, number]),
+  ...Array.from({ length: 8 }, (_, k) => [Math.cos(((k + 0.5) / 8) * Math.PI * 2), Math.sin(((k + 0.5) / 8) * Math.PI * 2), 0.5] as [number, number, number]),
+];
 
 export class InkPipeline {
   readonly pipeline: RenderPipeline;
@@ -64,12 +82,19 @@ export class InkPipeline {
   private bloomNode: N = null;
   private dirty = true;
   private offTunables: () => void;
+  /** Player vehicle mask (null when this view has no player to highlight). */
+  private maskPass: N = null;
+  /** Border colour (display sRGB) and opacity, set every frame from the hull (setHighlight). */
+  private readonly hlColor = uniform(new Vector3(0.44, 0.88, 0.29));
+  private readonly hlAlpha = uniform(1);
 
   constructor(
     private renderer: WebGPURenderer,
     scene: Scene,
     private camera: Camera,
     private tex: { noise: Texture; paper: Texture },
+    /** Camera layer holding the vehicle to outline (playerLayer), if any. */
+    highlightLayer?: number,
   ) {
     this.pipeline = new RenderPipeline(renderer);
     this.pipeline.outputColorTransform = false; // tonemap + sRGB done in the graph
@@ -81,6 +106,15 @@ export class InkPipeline {
     sceneMrt.setBlendMode('normal', new BlendMode(MaterialBlending));
     sceneMrt.setBlendMode('meta', new BlendMode(MaterialBlending));
     this.scenePass.setMRT(sceneMrt);
+    if (highlightLayer !== undefined) {
+      this.maskPass = pass(scene, camera);
+      const layers = new Layers();
+      layers.set(highlightLayer);
+      this.maskPass.setLayers(layers);
+      const flat = new MeshBasicNodeMaterial();
+      flat.name = 'PlayerMask';
+      this.maskPass.overrideMaterial = flat;
+    }
     this.offTunables = tunables.onChange((key) => {
       if (REBUILD_KEYS.has(key)) this.dirty = true;
       if (this.bloomNode && key === 'post.bloomStrength') this.bloomNode.strength.value = tunables.get('post.bloomStrength');
@@ -91,13 +125,21 @@ export class InkPipeline {
 
   dispose(): void {
     this.offTunables();
+    this.maskPass?.overrideMaterial?.dispose();
     this.pipeline.dispose();
+  }
+
+  /** Player border colour (sRGB 0..1, display space) and opacity (0 hides it). */
+  setHighlight(r: number, g: number, b: number, alpha: number): void {
+    this.hlColor.value.set(r, g, b);
+    this.hlAlpha.value = alpha;
   }
 
   setCamera(camera: Camera): void {
     if ((camera as { isOrthographicCamera?: boolean }).isOrthographicCamera !== (this.camera as { isOrthographicCamera?: boolean }).isOrthographicCamera) this.dirty = true;
     this.camera = camera;
     this.scenePass.camera = camera;
+    if (this.maskPass) this.maskPass.camera = camera;
   }
 
   /** Call on resize / pixel-ratio change. */
@@ -178,6 +220,7 @@ export class InkPipeline {
     let ldr: N = renderOutput(vec4(hdr.rgb.mul(U.exposure), 1), NeutralToneMapping, SRGBColorSpace);
     ldr = grade(ldr.rgb);
     ldr = paperAndGrain(ldr, this.tex.paper);
+    if (this.maskPass && tunables.get<boolean>('lines.player')) ldr = this.playerBorder(ldr, viewZAt);
     let out: N = vec4(ldr, 1);
 
     const aa = tunables.get<string>('post.aa');
@@ -206,6 +249,25 @@ export class InkPipeline {
     }
     this.pipeline.outputNode = out;
     this.pipeline.needsUpdate = true;
+  }
+
+  /** Hull-coloured border around the player's vehicle, visible through obstacles (see header). */
+  private playerBorder(ldr: N, viewZAt: (uv: N) => N): N {
+    const maskDepth: N = this.maskPass.getTextureNode('depth');
+    const ortho = (this.camera as { isOrthographicCamera?: boolean }).isOrthographicCamera === true;
+    const toViewZ = ortho ? orthographicDepthToViewZ : perspectiveDepthToViewZ;
+    const covered = (uv: N): N => step(maskDepth.sample(uv).x, 0.99999);
+    const border = Fn(() => {
+      const r: N = U.invResolution.mul(U.playerLineWidth.mul(U.resolutionScale).max(1));
+      let ring: N = float(0);
+      for (const [x, y, k] of RING) ring = max(ring, covered(screenUV.add(vec2(x, y).mul(r).mul(k))));
+      const inside: N = covered(screenUV);
+      // Body hidden behind scene geometry: the scene is clearly closer than the vehicle there.
+      const zCar: N = toViewZ(maskDepth.sample(screenUV).x, cameraNear, cameraFar);
+      const hidden: N = inside.mul(step(zCar.add(0.4), viewZAt(screenUV)));
+      return max(ring.mul(float(1).sub(inside)), hidden.mul(U.playerHiddenTint)).mul(this.hlAlpha);
+    });
+    return mix(ldr, this.hlColor, border().saturate());
   }
 }
 

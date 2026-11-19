@@ -36,6 +36,13 @@ const LINE_DEFS: Def[] = [
   { key: 'lines.idStrength', type: 'number', default: 0.9, min: 0, max: 1, step: 0.01, label: 'Object boundary strength' },
   { key: 'lines.wobble', type: 'option', default: 'low', options: ['off', 'low'], label: 'Hand-drawn wobble (S2)' },
   { key: 'lines.wobbleAmp', type: 'number', default: 0.6, min: 0, max: 3, step: 0.05, unit: 'px', label: 'Wobble amplitude' },
+  // Player vehicle border (hull readout): drawn over everything, so the car shows through obstacles.
+  { key: 'lines.player', type: 'boolean', default: true, label: 'Player hull border' },
+  { key: 'lines.playerWidth', type: 'number', default: 3.5, min: 1, max: 10, step: 0.5, unit: 'px@1080p', label: 'Player border width' },
+  { key: 'lines.playerHiddenTint', type: 'number', default: 0.35, min: 0, max: 1, step: 0.05, label: 'Player tint when hidden' },
+  { key: 'lines.playerOk', type: 'color', default: '#6FE04A', label: 'Player border: full hull' },
+  { key: 'lines.playerHurt', type: 'color', default: '#FF9A2E', label: 'Player border: smoking' },
+  { key: 'lines.playerCritical', type: 'color', default: '#FF2E22', label: 'Player border: burning' },
 ];
 
 const POST_DEFS: Def[] = [
@@ -103,6 +110,8 @@ export const U = {
   creaseStrength: uniform(num('lines.creaseStrength')),
   idStrength: uniform(num('lines.idStrength')),
   wobbleAmp: uniform(num('lines.wobbleAmp')),
+  playerLineWidth: uniform(num('lines.playerWidth')),
+  playerHiddenTint: uniform(num('lines.playerHiddenTint')),
   /** 1 / render target size in px, and render height / 1080. */
   invResolution: uniform(new Vector2(1 / 1920, 1 / 1080)),
   resolutionScale: uniform(1),
@@ -145,6 +154,8 @@ const MAP: Record<string, (v: unknown) => void> = {
   'lines.creaseStrength': (v) => (U.creaseStrength.value = v as number),
   'lines.idStrength': (v) => (U.idStrength.value = v as number),
   'lines.wobbleAmp': (v) => (U.wobbleAmp.value = tunables.get<string>('lines.wobble') === 'off' ? 0 : (v as number)),
+  'lines.playerWidth': (v) => (U.playerLineWidth.value = v as number),
+  'lines.playerHiddenTint': (v) => (U.playerHiddenTint.value = v as number),
   'lines.wobble': (v) => (U.wobbleAmp.value = v === 'off' ? 0 : num('lines.wobbleAmp')),
   'post.exposure': (v) => (U.exposure.value = v as number),
   'post.saturation': (v) => (U.saturation.value = v as number),
