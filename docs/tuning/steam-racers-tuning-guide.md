@@ -1,6 +1,6 @@
 # Steam Racers · playtest tuning guide
 
-Generated from the game's parameter registry (365 parameters). Give this file and `steam-racers-tuning-defaults.json` to any AI assistant (ChatGPT, Claude, Gemini, …).
+Generated from the game's parameter registry (374 parameters). Give this file and `steam-racers-tuning-defaults.json` to any AI assistant (ChatGPT, Claude, Gemini, …).
 
 ## For the playtester
 
@@ -574,6 +574,20 @@ Steam and smoke particles. Visual and performance.
 | `fx.smokeOpacity` | 0.8 | 0 … 1 (step 0.01) |  | Smoke opacity |
 | `fx.rateScale` | 1 | 0 … 4 (step 0.05) |  | Emission rate scale |
 | `fx.wind` | 1.2 | 0 … 8 (step 0.1) | m/s | Wind |
+
+#### intro (`intro.*`)
+
+| Key | Default | Range | Unit | Meaning |
+| :-- | --: | :-- | :-- | :-- |
+| `intro.enabled` | true | true / false |  | Race intro (fly-over before the countdown) |
+| `intro.establish` | 3.4 | 0 … 10 (step 0.1) | s | Track overview |
+| `intro.point` | 2.2 | 0 … 6 (step 0.1) | s | Key point fly-by (each) |
+| `intro.points` | 3 | 0 … 6 (step 1) |  | Key points shown |
+| `intro.grid` | 3.4 | 0 … 10 (step 0.1) | s | Starting grid |
+| `intro.hero` | 2.4 | 0 … 6 (step 0.1) | s | Player close-up |
+| `intro.handoff` | 1.5 | 0.1 … 4 (step 0.1) | s | Hand-over to the race camera |
+| `intro.skipHandoff` | 0.7 | 0.1 … 3 (step 0.1) | s | Hand-over after a skip |
+| `intro.skipGuard` | 0.5 | 0 … 3 (step 0.1) | s | Ignore skip input for |
 
 #### Rendering: scenery density (`dressing.*`)
 

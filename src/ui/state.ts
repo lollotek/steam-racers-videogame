@@ -64,6 +64,17 @@ export interface ResultRow {
   repair?: number;
 }
 
+/** Race intro overlay (game/race-intro.ts): changes only at cuts and at the hand-over. */
+export interface IntroCaption {
+  /** Shot number: a new value restarts the cut flash. */
+  shot: number;
+  kind: 'establish' | 'point' | 'grid' | 'hero';
+  title: string;
+  sub: string;
+  /** Handing over to the race camera: captions and letterbox leave. */
+  out: boolean;
+}
+
 export const ui = {
   backend: signal<string>('…'),
   tier: signal<string>('…'),
@@ -79,6 +90,8 @@ export const ui = {
   /** Race phase and countdown (seconds left, 0 when running). */
   phase: signal<'countdown' | 'running' | 'finished'>('countdown'),
   countdown: signal<number>(0),
+  /** Race intro playing (HUD hidden, letterbox + captions); null otherwise. */
+  intro: signal<IntroCaption | null>(null),
   /** Shown when every player has finished. */
   results: signal<ResultRow[] | null>(null),
   /** Standings for the mini leaderboard: name + color, in order. */
@@ -134,6 +147,8 @@ export interface FlowActions {
   /** Workshop → next player / next briefing. */
   workshopDone(): void;
   raceAgain(): void;
+  /** Skip the race intro (tap / click on it). */
+  skipIntro(): void;
   resume(): void;
   restart(): void;
   retire(): void;

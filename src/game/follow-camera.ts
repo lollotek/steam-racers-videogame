@@ -69,6 +69,11 @@ export class FollowCamera {
     this.camera = new PerspectiveCamera(tunables.get('camera.fov'), aspect, 2, 1000);
   }
 
+  /** Point the camera looks at (smoothed), e.g. for the race intro hand-over. */
+  get lookPoint(): Readonly<Vector3> {
+    return this.focus;
+  }
+
   get mode(): CameraMode {
     return tunables.get<string>('camera.mode') === 'chase' ? 'chase' : 'board';
   }

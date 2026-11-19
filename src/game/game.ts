@@ -17,7 +17,7 @@ import { PlayerInput } from '../input/input-manager';
 import { KeyboardSource, P1_KEYS, P2_KEYS, mergeBindings } from '../input/keyboard';
 import { GamepadSource } from '../input/gamepad';
 import type { TouchSource } from '../input/touch';
-import type { ActionFrame, InputSource } from '../input/actions';
+import { BUTTONS, type ActionFrame, type InputSource } from '../input/actions';
 import { DynamicResolution, TIERS, type QualityTierName } from '../render/quality';
 import { type RendererHandle, pixelRatioFor } from '../render/renderer';
 import { InkPipeline, playerLayer } from '../render/pipeline';
@@ -30,6 +30,8 @@ import { SparkSystem } from '../render/fx/sparks';
 import type { ImpactInfo } from '../sim/race-sim';
 import type { Barricade } from '../track/track-format';
 import { FollowCamera, dampAngle } from './follow-camera';
+import { RaceIntro, introTimings } from './race-intro';
+import { planIntro } from '../race/intro-shots';
 import { buildWorld, type GameWorld } from '../world/build';
 import { squareGrid } from '../world/square-grid';
 import { getBiome } from '../biomes';
@@ -218,6 +220,9 @@ export class Game {
   private unsubscribe: (() => void)[] = [];
   /** Players who gave up from the pause menu (results show them retired, no repair). */
   private retired = new Set<number>();
+  /** Race intro fly-over (null when not playing) and the caption last published. */
+  private intro: RaceIntro | null = null;
+  private introKey = '';
   readonly setup: RaceSetup;
 
   constructor(
@@ -406,7 +411,65 @@ export class Game {
   }
 
   start(): void {
+    const f = this.opts.flags.intro;
+    if (f ?? (!this.opts.flags.test && tunables.get<boolean>('intro.enabled'))) this.playIntro();
     this.gfx.renderer.setAnimationLoop(this.frame);
+  }
+
+  /**
+   * Race intro (game/race-intro.ts): track overview, key places, the grid, the player's vehicle,
+   * then the countdown. Restarts the race first if it is already under way (debug replay).
+   */
+  playIntro(): void {
+    if (this.sim.phase !== 'countdown' || this.sim.clock > -tunables.get<number>('race.countdown')) this.startRace();
+    const sim = this.sim;
+    const shots = planIntro({
+      track: sim.track,
+      corners: this.corners,
+      racers: sim.racers.map((r) => ({ x: r.vehicle.curr.x, y: r.vehicle.curr.y - r.vehicle.spec.visualOffsetY, z: r.vehicle.curr.z, heading: r.vehicle.heading() })),
+      hero: 0,
+      heroSlot: this.setup.grid?.[0] ?? 0,
+      heroName: this.setup.entrants[0]?.name ?? 'Player',
+      timings: introTimings(),
+    });
+    this.intro = new RaceIntro(shots);
+    this.introKey = '';
+    this.publishIntro();
+  }
+
+  /** Any button / a tap: straight to the hand-over to the race camera. */
+  skipIntro(): void {
+    this.intro?.skip();
+  }
+
+  private publishIntro(): void {
+    const c = this.intro?.caption ?? null;
+    const key = c ? `${c.shot}|${c.out}` : '';
+    if (key === this.introKey) return;
+    this.introKey = key;
+    ui.intro.value = c;
+  }
+
+  private endIntro(): void {
+    this.intro = null;
+    this.introKey = '';
+    ui.intro.value = null;
+    U.fogStart.value = tunables.get<number>('fog.start');
+    U.fogDensity.value = tunables.get<number>('fog.density');
+    this.loop.resetAccumulator();
+  }
+
+  /**
+   * Lift the fog while the intro camera is far from what it shows (the overview is several hundred
+   * metres up); eases back to the biome's fog over the hand-over.
+   */
+  private introFog(intro: RaceIntro): void {
+    const start = tunables.get<number>('fog.start');
+    const density = tunables.get<number>('fog.density');
+    const d = this.slots[0]!.camera.camera.position.distanceTo(intro.focus);
+    const w = intro.weight;
+    U.fogStart.value = start + (Math.max(start, d - 30) - start) * w;
+    U.fogDensity.value = density + (density * Math.min(1, 200 / Math.max(1, d)) - density) * w;
   }
 
   /**
@@ -418,6 +481,7 @@ export class Game {
     window.removeEventListener('resize', this.onResize);
     window.removeEventListener('keydown', this.onKey);
     document.removeEventListener('visibilitychange', this.onVisibility);
+    if (this.intro) this.endIntro();
     for (const off of this.unsubscribe) off();
     this.unsubscribe = [];
     this.sim.dispose();
@@ -514,6 +578,11 @@ export class Game {
 
   /** Enter on the results screen restarts (quick mode; the menus handle it otherwise). */
   private onKey = (e: KeyboardEvent) => {
+    // Race intro: any key skips it (pads and touch go through the player inputs / the overlay).
+    if (this.intro && !e.repeat && !this.loop.paused) {
+      this.intro.skip();
+      return;
+    }
     if (this.setup.mode === 'quick' && ui.results.value && (e.code === 'Enter' || e.code === 'NumpadEnter')) this.startRace();
   };
 
@@ -741,21 +810,36 @@ export class Game {
     if (this.loop.paused) {
       for (const s of this.slots) if (s.input.sample().pressed.pause) this.setPaused(false);
     }
-    const tick = this.loop.advance(realDt);
+    // Race intro: the sim waits (the countdown starts after it), any button skips to the hand-over.
+    const intro = this.intro;
+    if (intro && !this.loop.paused) {
+      for (const s of this.slots) {
+        const f = s.input.sample();
+        if (BUTTONS.some((b) => f.pressed[b])) intro.skip();
+      }
+      intro.advance(Math.min(Math.max(realDt, 0), 0.1));
+    }
+    const tick = intro ? { steps: 0, alpha: 1, frameDt: Math.min(Math.max(realDt, 0), 0.1) } : this.loop.advance(realDt);
     for (let i = 0; i < tick.steps; i++) {
       this.simStep();
       if (this.loop.paused) break;
     }
-    const simDt = this.loop.paused ? 0 : tick.frameDt * this.loop.timeScale;
-    this.presentation(tick.alpha, simDt, tick.frameDt);
+    const simDt = this.loop.paused || intro ? 0 : tick.frameDt * this.loop.timeScale;
+    // Ambient effects (smoke, rain, pickups) keep moving under the intro.
+    const fxDt = intro && !this.loop.paused ? tick.frameDt : simDt;
+    this.presentation(tick.alpha, simDt, tick.frameDt, fxDt);
     this.render();
+    if (intro) {
+      if (intro.done) this.endIntro();
+      else this.publishIntro();
+    }
     this.updateTags();
     if (!this.loop.paused && this.dynres.update(realDt * 1000)) this.applyPixelRatio();
     this.updateHud(tick.frameDt);
   };
 
   /** Interpolate physics transforms onto the rigs, animate, update cameras and particles. */
-  private presentation(alpha: number, simDt: number, frameDt = simDt): void {
+  private presentation(alpha: number, simDt: number, frameDt = simDt, fxDt = simDt): void {
     const sim = this.sim;
     const maxSpeed = tunables.get('handling.maxSpeed');
     sim.racers.forEach((r, i) => {
@@ -842,12 +926,19 @@ export class Game {
       s.camera.update({ x: root.position.x, y: smp.y, z: root.position.z, heading: s.camYaw, speedFrac: Math.min(1, Math.abs(r.vehicle.telemetry.forwardSpeed) / maxSpeed) }, frameDt);
     }
 
+    // Race intro: the cameras play its shots (the race cameras above keep their pose for the hand-over).
+    const intro = this.intro;
+    if (intro) {
+      for (const s of this.slots) intro.apply(s.camera.camera, s.camera.lookPoint);
+      this.introFog(intro);
+    }
+
     const cam = this.slots[0]!.camera.camera;
     const focus = this.views[0]!.rig.root.position;
-    this.world.update(simDt, this.tmp.set(cam.position.x, focus.y, cam.position.z).lerp(focus, 0.7));
-    this.features.update(simDt);
-    this.particles.update(simDt, cam);
-    this.sparks.update(simDt, cam);
+    this.world.update(fxDt, intro ? intro.focus : this.tmp.set(cam.position.x, focus.y, cam.position.z).lerp(focus, 0.7));
+    this.features.update(fxDt);
+    this.particles.update(fxDt, cam);
+    this.sparks.update(fxDt, cam);
   }
 
   private render(): void {
@@ -942,7 +1033,7 @@ export class Game {
   private gaugeFrame(s: PlayerSlot, vp: ViewportRect): GaugeFrame | null {
     const sim = this.sim;
     const r = sim.racers[s.index]!;
-    if (this.loop.paused || ui.loading.value || ui.results.value || r.vehicle.wrecked) return null;
+    if (this.loop.paused || ui.loading.value || this.intro || ui.results.value || r.vehicle.wrecked) return null;
     const rr = r.rules;
     const st = rr.start;
     const start =
@@ -992,7 +1083,7 @@ export class Game {
     const followRival = tunables.get<string>('showcase.cameraTarget') === 'rival' && this.sim.racers.length > this.players;
     this.minimap?.update(
       this.sim.racers.map((r, i) => ({ x: r.vehicle.curr.x, z: r.vehicle.curr.z, color: this.views[i]!.color, player: i < this.players, wrecked: r.vehicle.wrecked })),
-      !ui.loading.value,
+      !ui.loading.value && !this.intro,
     );
     for (const s of this.slots) {
       const vp = this.viewportOf(s.index);
@@ -1001,7 +1092,7 @@ export class Game {
       const root = this.views[s.index]!.rig.root;
       // Centred below the vehicle on screen whatever its heading: offset along the screen's down.
       const anchor = { x: root.position.x, y: root.position.y, z: root.position.z };
-      const visible = !this.loop.paused && !(followRival && s.index === 0) && !ui.loading.value && !r.vehicle.wrecked && tunables.get<boolean>('hud.vehicleTag');
+      const visible = !this.loop.paused && !(followRival && s.index === 0) && !ui.loading.value && !this.intro && !r.vehicle.wrecked && tunables.get<boolean>('hud.vehicleTag');
       s.tag.update(anchor, back, s.camera.camera, vp, r.vehicle.gearbox.gear, this.steamOf(r.vehicle.gearbox), visible);
       const place = { above: tunables.get<number>('hud.cornerOffset'), below: back, belowPx: 26, safeTop: this.hudBottom(s, vp) };
       s.cornerTag.update(anchor, place, s.camera.camera, vp, ...this.cornerOf(r, visible && tunables.get<boolean>('hud.cornerTag')));

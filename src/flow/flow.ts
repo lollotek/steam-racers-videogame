@@ -144,6 +144,10 @@ export class Flow implements FlowActions {
     this.game?.startRace();
   }
 
+  skipIntro(): void {
+    this.game?.skipIntro();
+  }
+
   // --- Cup ---------------------------------------------------------------------------------------
 
   private publish(): void {
