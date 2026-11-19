@@ -14,6 +14,7 @@ Steam-powered combat racing in the Southern Wastelands. Three.js (WebGPU + WebGL
 | [05 — Track editor](docs/05-track-editor.md) | M5: `/mapeditor/` tile editor, Play, 3D preview, tabletop tileset |
 | [gameplay.md](docs/gameplay.md) | Gameplay reference (Italian) |
 | [Testing checklist](docs/testing-checklist.md) | Manual tests per milestone, PC + phone |
+| [Playtest tuning kit](docs/tuning/steam-racers-tuning-guide.md) | Guide + [defaults](docs/tuning/steam-racers-tuning-defaults.json) to give an AI assistant; generated from the tunables |
 
 ## Commands
 
@@ -25,6 +26,7 @@ npm run preview      # serve the production build
 npm run test         # unit tests (Vitest)
 npm run test:e2e     # Playwright: desktop + emulated mobile (first time: npx playwright install chromium)
 npm run test:all     # typecheck + unit + e2e
+npm run tuning:kit   # regenerate docs/tuning/ after adding or changing tunables (the unit tests fail when stale)
 npx tsx tools/sim/run.ts --racers 4 --laps 3   # headless autopilot race, JSON stats (--track proving-ground)
 npx tsx tools/sim/stress.ts                    # physics stability under abusive driving (--track proving-ground)
 node tools/probe.mjs 10 "laps=1"              # print game snapshots from a headless page
@@ -36,6 +38,8 @@ node tools/shoot.mjs <outDir> 'name={"post.debugView":"grayscale"}'   # headless
 The game opens on the title screen (Grand Prix, Single race). `?quick` (or `?test`) skips the menus and starts a race from the flags below.
 
 `?debug` tuning panel · `?track=foundry-01|proving-ground|runegate-deep|cinderholme-station|rustmaw-pit|lirael-canopy` · `?tier=low|medium|high|ultra` · `?backend=webgl2` · `?players=2` (PC split screen) · `?touch=1|0` · `?seed=N` · `?racers=4..8` · `?laps=1..9` · `?custom` (race the track handed over by the editor) · `?grid` (tabletop squares on the road) · `?vscale=0.25..1.5` (vehicle size, default 0.5)
+
+**Playtest tuning:** title screen → *Playtest tuning*. Playtesters download the AI kit (guide + defaults), ask any AI assistant to write a tuning file or to guide them, then load or paste the JSON. The tuning stays active across reloads until *Reset to defaults*; the title screen shows it. Code: `src/core/tuning-file.ts`, `src/tuning/`.
 
 **Track editor:** `/mapeditor/` (PC) — see [doc 05](docs/05-track-editor.md).
 

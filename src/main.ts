@@ -11,6 +11,7 @@ import { tunables } from './core/tunables';
 import { initPhysics } from './sim/race-sim';
 import { installAutoFullscreen } from './ui/fullscreen';
 import { registerSW } from 'virtual:pwa-register';
+import { initTuning } from './tuning/active';
 
 async function boot(): Promise<void> {
   // autoUpdate: a new deploy's service worker takes over and the page reloads once, so players never run stale cached code.
@@ -59,6 +60,8 @@ async function boot(): Promise<void> {
   } catch {
     /* private mode: the Cup is not saved */
   }
+  // Playtest tuning (title screen → Playtest tuning): stored values apply before the first race.
+  initTuning(storage);
   flow = new Flow({ gfx, flags, isMobile, tier, touch, store: storage, onGame: (g) => (game = g) });
 
   if (import.meta.env.DEV || flags.test) {

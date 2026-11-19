@@ -49,12 +49,19 @@ type Listener = (key: string, value: TunableValue) => void;
 export class TunableRegistry {
   private entries = new Map<string, Tunable<TunableValue>>();
   private listeners = new Set<Listener>();
+  /** Preset values for keys not registered yet (e.g. groups registered when a race starts). */
+  private pending = new Map<string, TunableValue>();
 
   register<D extends TunableDef>(def: D): Tunable<DefaultOf<D>> {
     const existing = this.entries.get(def.key);
     if (existing) return existing as Tunable<DefaultOf<D>>;
     const t: Tunable<TunableValue> = { def, value: def.default };
     this.entries.set(def.key, t);
+    if (this.pending.has(def.key)) {
+      const v = sanitize(def, this.pending.get(def.key)!);
+      this.pending.delete(def.key);
+      if (v !== undefined) t.value = v;
+    }
     return t as Tunable<DefaultOf<D>>;
   }
 
@@ -83,6 +90,7 @@ export class TunableRegistry {
   }
 
   reset(key?: string): void {
+    if (!key) this.pending.clear();
     if (key) {
       const t = this.entries.get(key);
       if (t) this.set(key, t.def.default);
@@ -106,14 +114,17 @@ export class TunableRegistry {
     return out;
   }
 
-  /** Applies known keys, ignores unknown ones; returns the number of applied keys. */
-  applyPreset(preset: Preset): number {
+  /**
+   * Applies known keys; returns the number of applied keys. Unknown keys are ignored, or with
+   * `keepUnknown` held until a tunable with that key registers (then applied, sanitized).
+   */
+  applyPreset(preset: Preset, keepUnknown = false): number {
     let n = 0;
     for (const [k, v] of Object.entries(preset)) {
       if (this.entries.has(k)) {
         this.set(k, v);
         n++;
-      }
+      } else if (keepUnknown) this.pending.set(k, v);
     }
     return n;
   }
@@ -124,7 +135,7 @@ export class TunableRegistry {
   }
 }
 
-function sanitize(def: TunableDef, value: TunableValue): TunableValue | undefined {
+export function sanitize(def: TunableDef, value: TunableValue): TunableValue | undefined {
   switch (def.type) {
     case 'number': {
       const n = typeof value === 'number' ? value : Number(value);

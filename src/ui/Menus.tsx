@@ -26,6 +26,8 @@ import {
 import { flowUi, formatTime, ui, type FlowActions, type ResultRow } from './state';
 import { useMenuNav, useRefocus } from './menu-nav';
 import { Controls } from './Controls';
+import { TuningPanel } from './TuningPanel';
+import { activeTuning, tuningSummary } from '../tuning/active';
 
 type Mode = 'cup' | 'single';
 type Step = 'mode' | 'players' | 'difficulty' | 'vehicle0' | 'vehicle1' | 'track';
@@ -58,7 +60,9 @@ export function TitleScreen({ actions }: { actions: FlowActions }) {
   const [players, setPlayers] = useState<1 | 2>(1);
   const [difficulty, setDifficulty] = useState<Difficulty>('normal');
   const [vehicles, setVehicles] = useState<VehicleId[]>(['hotrod', 'tank']);
+  const [tuning, setTuning] = useState(false);
   const saved = flowUi.saved.value;
+  const tuned = activeTuning.value;
 
   const steps: Step[] = ['mode'];
   if (mode) {
@@ -70,6 +74,10 @@ export function TitleScreen({ actions }: { actions: FlowActions }) {
   const step = steps[Math.min(stepIdx, steps.length - 1)]!;
   const next = () => setStepIdx((i) => i + 1);
   const back = () => {
+    if (tuning) {
+      setTuning(false);
+      return;
+    }
     if (stepIdx === 0) return;
     if (stepIdx === 1) setMode(null);
     setStepIdx((i) => i - 1);
@@ -95,7 +103,7 @@ export function TitleScreen({ actions }: { actions: FlowActions }) {
   useMenuNav(root, back);
   // The save is read once the renderer is up: refocus when "Continue Cup" appears.
   const canContinue = !!saved;
-  useRefocus(root, `${step}:${canContinue}`);
+  useRefocus(root, `${step}:${canContinue}:${tuning}`);
 
   let body: ComponentChildren;
   let heading = '';
@@ -131,6 +139,7 @@ export function TitleScreen({ actions }: { actions: FlowActions }) {
               next();
             }}
           />
+          <Option label="Playtest tuning" hint={tuned ? `Active: ${tuningSummary(tuned)}` : 'Load parameters written with an AI assistant'} testid="menu-tuning" onPick={() => setTuning(true)} />
         </>
       );
       break;
@@ -169,12 +178,26 @@ export function TitleScreen({ actions }: { actions: FlowActions }) {
           <span class="logo-top">STEAM</span>
           <span class="logo-bottom">RACERS</span>
         </div>
-        {mode && <div class="menu-crumb">{mode === 'cup' ? 'Grand Prix' : 'Single race'}</div>}
-        {heading && <h2>{heading}</h2>}
-        <div class="menu-list" key={step} data-testid={`step-${step}`}>
-          {body}
-        </div>
-        {stepIdx > 0 && (
+        {tuned && !tuning && (
+          <div class="title-tuning-badge" data-testid="title-tuning-badge">
+            Playtest tuning: {tuningSummary(tuned)}
+          </div>
+        )}
+        {tuning ? (
+          <>
+            <h2>Playtest tuning</h2>
+            <TuningPanel onBack={back} />
+          </>
+        ) : (
+          <>
+            {mode && <div class="menu-crumb">{mode === 'cup' ? 'Grand Prix' : 'Single race'}</div>}
+            {heading && <h2>{heading}</h2>}
+            <div class="menu-list" key={step} data-testid={`step-${step}`}>
+              {body}
+            </div>
+          </>
+        )}
+        {!tuning && stepIdx > 0 && (
           <button class="btn ghost" data-nav onClick={back}>
             Back
           </button>
