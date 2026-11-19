@@ -29,7 +29,8 @@ Scale **1:125**.
 
 **Vehicle size (decided 2026-11-16):** the vehicles are drawn and simulated at **half size** (`VEHICLE_SCALE` = 0.5 in `units.ts`; `?vscale=0.25..1.5` overrides it, `?vscale=1` = the original size). A hot rod is then 1 × 2.5 m, i.e. **one square**, and the track feels twice as big. `scaleSpec` (`vehicle-physics.ts`) scales the collider, wheels and suspension geometry; mass, engine, gear speeds and top speed are unchanged, and the vehicles follow the same paths in metres as before:
 
-- inertia follows the size (∝ k²) and the steering angle is reduced so the turning radius stays the same (tan a′ = k · tan a), so the yaw response and the AI lines do not change;
+- the steering angle is reduced so the turning radius stays the same (tan a′ = k · tan a), so the AI lines do not change;
+- the yaw inertia does not simply follow the size: at k² × the full-size value the tyre forces (unchanged) on lever arms × k spun the half-size car about twice as fast, so a slide started much sooner. `handling.yawInertia` multiplies it per halving of the size (factor^log2(1/k)); the default **3.5** (decided 2026-11-19) gives the half-size hot rod and tank the full-size yaw peak and rise time in a step-steer test (`tests/unit/yaw-scale.test.ts`; 3 to 3.5 match) and brings the AI hot rod's lap on rustmaw-pit back to within 1.5 s of the full-size one (63.1 s at ×1, 59.0 s at ×3.5, 57.5 s at full size over 40 seeds);
 - the suspension is stiffer (stiffness / k, damping / √k) so sag and travel shrink with the car (with the old stiffness the half-size chassis hit the start of the kickers);
 - the models, their smoke / dust / damage effects and the camera distances and look-ahead are multiplied by the same factor (the camera tunables are the full-size values).
 
